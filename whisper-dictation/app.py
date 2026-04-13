@@ -22,14 +22,25 @@ from stats import record_words, get_words_today, get_words_week, get_words_month
 from sounds import play_start, play_stop
 from hotkey import FnKeyHandler
 
-# Load .env from project dir or parent dir
-_here = os.path.dirname(os.path.abspath(__file__))
-load_dotenv(os.path.join(_here, ".env"))
-load_dotenv(os.path.join(os.path.dirname(_here), ".env"))
+# Load .env: try user config dir first, then project dir
+_config_dir = os.path.expanduser("~/.whisper-dictation")
+load_dotenv(os.path.join(_config_dir, ".env"))
 
+if not getattr(sys, 'frozen', False):
+    # Running from source — also check project dir
+    _here = os.path.dirname(os.path.abspath(__file__))
+    load_dotenv(os.path.join(_here, ".env"))
+    load_dotenv(os.path.join(os.path.dirname(_here), ".env"))
+
+_log_file = os.path.expanduser("~/.whisper-dictation/app.log")
+os.makedirs(os.path.dirname(_log_file), exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    handlers=[
+        logging.FileHandler(_log_file, mode="w"),
+        logging.StreamHandler(),
+    ],
 )
 log = logging.getLogger("app")
 
@@ -46,23 +57,33 @@ class WhisperDictationApp(rumps.App):
         self.hotkey = FnKeyHandler(on_start=self._on_record_start, on_stop=self._on_record_stop)
 
         # Menu items
+        self.record_item = rumps.MenuItem("🔴 Start Recording", callback=self._toggle_recording)
         self.stats_item = rumps.MenuItem("📊 Statistics", callback=self._show_stats)
         self.replacements_item = rumps.MenuItem("🔄 Text Replacements", callback=self._show_replacements)
         self.separator = rumps.separator
         self.quit_item = rumps.MenuItem("Quit", callback=self._quit)
 
         self.menu = [
+            self.record_item,
             self.stats_item,
             self.replacements_item,
             self.separator,
             self.quit_item,
         ]
 
+    def _toggle_recording(self, sender) -> None:
+        """Toggle recording on/off via menu click."""
+        if self.recorder.is_recording:
+            self._on_record_stop()
+        else:
+            self._on_record_start()
+
     def _on_record_start(self) -> None:
         """Called by hotkey handler when recording should start."""
         self.recorder.start()
         play_start()
         self.title = ICON_REC
+        self.record_item.title = "⏹ Stop Recording"
         log.info("Recording started")
 
     def _on_record_stop(self) -> None:
@@ -73,6 +94,8 @@ class WhisperDictationApp(rumps.App):
         if audio_path is None:
             # Too short or no audio
             self.title = ICON_IDLE
+            self.record_item.title = "🔴 Start Recording"
+            self.record_item.title = "🔴 Start Recording"
             log.info("Recording too short, ignored")
             return
 
@@ -90,6 +113,7 @@ class WhisperDictationApp(rumps.App):
             if not raw_text:
                 self._notify("Transcription Error", "No speech detected")
                 self.title = ICON_IDLE
+                self.record_item.title = "🔴 Start Recording"
                 return
 
             # Step 2: Apply text replacements (before cleanup)
@@ -108,12 +132,14 @@ class WhisperDictationApp(rumps.App):
             inject_text(final_text)
 
             self.title = ICON_IDLE
+            self.record_item.title = "🔴 Start Recording"
             log.info("Done: '%s'", final_text[:80])
 
         except Exception as e:
             log.error("Processing failed: %s", e)
             self._notify("Error", str(e))
             self.title = ICON_IDLE
+            self.record_item.title = "🔴 Start Recording"
         finally:
             # Clean up temp file
             try:
@@ -239,7 +265,12 @@ def main():
     # Start hotkey listener
     app.hotkey.start()
 
-    log.info("Whisper Dictation started. Press Fn to dictate.")
+    log.info("Whisper Dictation started. Hold Right Option to dictate.")
+    rumps.notification(
+        title="Whisper Dictation",
+        subtitle="Ready!",
+        message="Click the mic icon in menu bar to start recording.",
+    )
     app.run()
 
 
