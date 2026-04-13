@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 
 # Timing
 _DOUBLE_TAP_WINDOW = 0.35  # seconds
-_MIN_HOLD = 0.2  # seconds
+_MIN_HOLD = 0.15  # seconds
 
 
 def _listener_process(conn):
@@ -59,6 +59,10 @@ class FnKeyHandler:
         self._last_tap_time = 0.0
         self._toggle_mode = False
         self._recording = False
+        # Keep references to prevent garbage collection
+        self._proc = None
+        self._parent_conn = None
+        self._child_conn = None
 
     @property
     def is_recording(self) -> bool:
@@ -66,14 +70,14 @@ class FnKeyHandler:
 
     def start(self) -> None:
         """Start the key listener subprocess and a reader thread."""
-        parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+        self._parent_conn, self._child_conn = multiprocessing.Pipe(duplex=False)
 
-        proc = multiprocessing.Process(
-            target=_listener_process, args=(child_conn,), daemon=True
+        self._proc = multiprocessing.Process(
+            target=_listener_process, args=(self._child_conn,), daemon=True
         )
-        proc.start()
+        self._proc.start()
 
-        reader = threading.Thread(target=self._read_events, args=(parent_conn,), daemon=True)
+        reader = threading.Thread(target=self._read_events, args=(self._parent_conn,), daemon=True)
         reader.start()
 
         log.info("Right Option key listener started (subprocess)")

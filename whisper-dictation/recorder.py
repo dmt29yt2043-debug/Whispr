@@ -55,8 +55,8 @@ class Recorder:
             audio = np.concatenate(self._frames, axis=0)
             duration = len(audio) / SAMPLE_RATE
 
-            # Ignore recordings shorter than 0.2 seconds
-            if duration < 0.2:
+            # Ignore recordings shorter than 0.15 seconds
+            if duration < 0.15:
                 return None
 
             tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)

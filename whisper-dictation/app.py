@@ -21,6 +21,7 @@ from replacements import apply_replacements, load_replacements, save_replacement
 from stats import record_words, get_words_today, get_words_week, get_words_month
 from sounds import play_start, play_stop
 from hotkey import FnKeyHandler
+from overlay import StatusOverlay
 
 # Load .env: try user config dir first, then project dir
 _config_dir = os.path.expanduser("~/.whisper-dictation")
@@ -34,14 +35,18 @@ if not getattr(sys, 'frozen', False):
 
 _log_file = os.path.expanduser("~/.whisper-dictation/app.log")
 os.makedirs(os.path.dirname(_log_file), exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-    handlers=[
-        logging.FileHandler(_log_file, mode="w"),
-        logging.StreamHandler(),
-    ],
-)
+
+# Force configure root logger (imported modules may have already called basicConfig)
+_root = logging.getLogger()
+_root.setLevel(logging.INFO)
+_fmt = logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+_fh = logging.FileHandler(_log_file, mode="a", encoding="utf-8")
+_fh.setFormatter(_fmt)
+_root.addHandler(_fh)
+_sh = logging.StreamHandler()
+_sh.setFormatter(_fmt)
+_root.addHandler(_sh)
+
 log = logging.getLogger("app")
 
 ICON_IDLE = "🎙"
@@ -55,6 +60,7 @@ class WhisperDictationApp(rumps.App):
 
         self.recorder = Recorder()
         self.hotkey = FnKeyHandler(on_start=self._on_record_start, on_stop=self._on_record_stop)
+        self.overlay = StatusOverlay()
 
         # Menu items
         self.record_item = rumps.MenuItem("🔴 Start Recording", callback=self._toggle_recording)
@@ -84,6 +90,7 @@ class WhisperDictationApp(rumps.App):
         play_start()
         self.title = ICON_REC
         self.record_item.title = "⏹ Stop Recording"
+        self.overlay.show_recording()
         log.info("Recording started")
 
     def _on_record_stop(self) -> None:
@@ -95,11 +102,12 @@ class WhisperDictationApp(rumps.App):
             # Too short or no audio
             self.title = ICON_IDLE
             self.record_item.title = "🔴 Start Recording"
-            self.record_item.title = "🔴 Start Recording"
+            self.overlay.hide()
             log.info("Recording too short, ignored")
             return
 
         self.title = ICON_PROCESSING
+        self.overlay.show_processing()
         log.info("Processing audio: %s", audio_path)
 
         # Process in background thread to not block the event tap
@@ -111,7 +119,7 @@ class WhisperDictationApp(rumps.App):
             # Step 1: Transcribe
             raw_text = transcribe(audio_path)
             if not raw_text:
-                self._notify("Transcription Error", "No speech detected")
+                self.overlay.show_error("No speech detected")
                 self.title = ICON_IDLE
                 self.record_item.title = "🔴 Start Recording"
                 return
@@ -133,11 +141,12 @@ class WhisperDictationApp(rumps.App):
 
             self.title = ICON_IDLE
             self.record_item.title = "🔴 Start Recording"
+            self.overlay.show_done(final_text)
             log.info("Done: '%s'", final_text[:80])
 
         except Exception as e:
             log.error("Processing failed: %s", e)
-            self._notify("Error", str(e))
+            self.overlay.show_error(str(e)[:40])
             self.title = ICON_IDLE
             self.record_item.title = "🔴 Start Recording"
         finally:
@@ -266,11 +275,6 @@ def main():
     app.hotkey.start()
 
     log.info("Whisper Dictation started. Hold Right Option to dictate.")
-    rumps.notification(
-        title="Whisper Dictation",
-        subtitle="Ready!",
-        message="Click the mic icon in menu bar to start recording.",
-    )
     app.run()
 
 
