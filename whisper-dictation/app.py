@@ -13,6 +13,31 @@ import threading
 import rumps
 from dotenv import load_dotenv
 
+# Override Python's app identity BEFORE rumps/AppKit starts using it.
+# This changes the icon in alerts/dialogs from Python to our custom one.
+def _set_app_identity():
+    try:
+        from AppKit import NSBundle, NSImage, NSApplication
+        # Set bundle name + display name (shown in alerts)
+        bundle = NSBundle.mainBundle()
+        info = bundle.localizedInfoDictionary() or bundle.infoDictionary()
+        if info is not None:
+            info["CFBundleName"] = "Whisper Dictation"
+            info["CFBundleDisplayName"] = "Whisper Dictation"
+
+        # Set app icon
+        here = os.path.dirname(os.path.abspath(__file__))
+        icon_path = os.path.join(here, "icon.icns")
+        if os.path.exists(icon_path):
+            app = NSApplication.sharedApplication()
+            img = NSImage.alloc().initWithContentsOfFile_(icon_path)
+            if img is not None:
+                app.setApplicationIconImage_(img)
+    except Exception:
+        pass
+
+_set_app_identity()
+
 from recorder import Recorder
 from transcriber import transcribe, warmup_local_model
 from cleaner import clean_text
@@ -21,6 +46,7 @@ from replacements import apply_replacements, load_replacements, save_replacement
 from stats import record_words, get_words_today, get_words_week, get_words_month
 from sounds import play_start, play_stop
 from hotkey import FnKeyHandler
+from fn_hotkey import FnHotkey
 from overlay import StatusOverlay
 from focus_check import get_focused_text_info
 import settings as S
@@ -76,7 +102,15 @@ class WhisperDictationApp(rumps.App):
         S.load()
 
         self.recorder = Recorder(force_builtin=S.get("force_builtin_mic", True))
+
+        # Hotkey: if user selected "fn", try CGEventTap on main run loop.
+        # Otherwise (or if Fn fails to receive events) use pynput subprocess.
+        self._use_fn = S.get("hotkey", "right_option") == "fn"
+        self.fn_hotkey = None
+        if self._use_fn:
+            self.fn_hotkey = FnHotkey(on_start=self._on_record_start, on_stop=self._on_record_stop)
         self.hotkey = FnKeyHandler(on_start=self._on_record_start, on_stop=self._on_record_stop)
+
         self.overlay = StatusOverlay()
 
         # Menu items
@@ -262,17 +296,16 @@ class WhisperDictationApp(rumps.App):
         current = S.get("hotkey", "right_option")
         message = (
             f"Current hotkey: {current}\n\n"
-            "NOTE: Fn/Globe key cannot be captured from Python apps on macOS.\n"
-            "It is intercepted by the system.\n\n"
             "Available keys:\n"
-            "  right_option   (⌥ right, default)\n"
+            "  fn             (⌐ Fn/Globe — experimental, may be suppressed by macOS)\n"
+            "  right_option   (⌥ right, recommended)\n"
             "  left_option    (⌥ left)\n"
             "  right_cmd      (⌘ right)\n"
-            "  left_cmd       (⌘ left — conflicts)\n"
             "  right_shift    (⇧ right)\n"
             "  right_ctrl     (⌃ right)\n"
             "  caps_lock      (⇪)\n"
             "  f13...f19      (function row on big keyboards)\n\n"
+            "App restart required after changing to/from 'fn'.\n"
             "Type the key name below:"
         )
         w = rumps.Window(
@@ -284,13 +317,19 @@ class WhisperDictationApp(rumps.App):
         if not r.clicked:
             return
         new_key = r.text.strip().lower()
-        valid = {"right_option", "left_option", "right_cmd", "left_cmd",
+        valid = {"fn", "right_option", "left_option", "right_cmd", "left_cmd",
                  "right_shift", "left_shift", "right_ctrl", "caps_lock",
                  "f13", "f14", "f15", "f16", "f17", "f18", "f19"}
         if new_key in valid:
+            prev = S.get("hotkey")
             S.set("hotkey", new_key)
-            self.hotkey.restart_with_new_key()
-            self._notify("Hotkey", f"Changed to: {new_key}")
+            # Fn requires restart (CGEventTap on main run loop)
+            if new_key == "fn" or prev == "fn":
+                rumps.alert("Restart Required",
+                            message=f"Hotkey set to '{new_key}'. Please quit and relaunch the app.")
+            else:
+                self.hotkey.restart_with_new_key()
+                self._notify("Hotkey", f"Changed to: {new_key}")
             log.info("Hotkey changed to: %s", new_key)
         else:
             rumps.alert("Invalid", message=f"Unknown key: {new_key}")
@@ -463,8 +502,33 @@ class WhisperDictationApp(rumps.App):
 
 def main():
     app = WhisperDictationApp()
+
+    # Try Fn (CGEventTap on main run loop) if selected
+    fn_installed = False
+    if app.fn_hotkey is not None:
+        fn_installed = app.fn_hotkey.install()
+        if fn_installed:
+            log.info("Fn hotkey tap installed — will fall back to pynput if no events after 30s")
+        else:
+            log.warning("Fn hotkey tap install failed — falling back to pynput")
+
+    # Always start pynput subprocess as fallback/primary
     app.hotkey.start()
-    log.info("Whisper Dictation started (mode=%s). Hold Right Option to dictate.", S.get("mode"))
+
+    # If Fn was requested, monitor whether it actually receives events
+    if app.fn_hotkey is not None and fn_installed:
+        def _fn_watchdog():
+            import time as _t
+            _t.sleep(30)
+            if not app.fn_hotkey.seen_fn_event:
+                log.warning(
+                    "Fn tap received 0 events after 30s — Fn is suppressed by macOS. "
+                    "Use a different hotkey (right_option, caps_lock, etc.)."
+                )
+        threading.Thread(target=_fn_watchdog, daemon=True).start()
+
+    log.info("Whisper Dictation started (mode=%s, hotkey=%s).",
+             S.get("mode"), S.get("hotkey"))
     app.run()
 
 
