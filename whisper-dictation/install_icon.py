@@ -5,26 +5,43 @@ import subprocess
 import sys
 from PIL import Image
 
-SRC = "/Users/maxsnigirev/Downloads/Gemini_Generated_Image_jk3787jk3787jk37.png"
+SRC = "/Users/maxsnigirev/Downloads/Gemini_Generated_Image_8d87l8d87l8d87l8.png"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ICONSET_DIR = os.path.join(SCRIPT_DIR, "icon.iconset")
 ICNS_PATH = os.path.join(SCRIPT_DIR, "icon.icns")
 
 
 def crop_to_icon(img: Image.Image) -> Image.Image:
-    """Auto-crop to the main rounded-square icon — find darkest/most-saturated region."""
+    """Auto-crop to the icon — detects checkerboard/white backgrounds.
+
+    Uses color saturation + hue channel variance to find the colorful icon
+    (which stands out from grey/white checkerboard patterns and plain white).
+    """
     import numpy as np
-    img = img.convert("RGB")
-    arr = np.array(img)
+
+    img_rgba = img.convert("RGBA")
+    arr = np.array(img_rgba)
     h, w, _ = arr.shape
 
-    # Score each pixel: lower = more icon-like (colorful/dark)
-    # Icon has purple/blue gradient, so R is relatively low, B is high
-    r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
-    # Brightness of whitish background is ~240+. Icon body pixels are <220.
-    # Saturation helps: white has r≈g≈b, icon has strong B>R
-    brightness = (r.astype(int) + g.astype(int) + b.astype(int)) / 3
-    is_icon = brightness < 230  # strict: skip subtle shadows/decorations
+    # If real transparency exists, prefer it
+    alpha = arr[:, :, 3]
+    if alpha.min() < 240:
+        is_icon = alpha > 180
+    else:
+        # Use saturation (HSV's S channel): grey/white have S≈0, colored has S>0
+        r = arr[:, :, 0].astype(np.int16)
+        g = arr[:, :, 1].astype(np.int16)
+        b = arr[:, :, 2].astype(np.int16)
+        mx = np.maximum(np.maximum(r, g), b)
+        mn = np.minimum(np.minimum(r, g), b)
+        # Saturation ~ (max-min)/max
+        sat = np.zeros_like(mx, dtype=np.float32)
+        nonzero = mx > 0
+        sat[nonzero] = (mx[nonzero] - mn[nonzero]) / mx[nonzero]
+        # The icon has strong saturation; checkerboard greys have sat ≈ 0;
+        # the white rounded frame has sat ≈ 0 too — we'll miss it, but the
+        # colorful content inside the frame is what matters.
+        is_icon = sat > 0.18
 
     # Find rows and cols with enough "icon" pixels
     row_has = is_icon.sum(axis=1) > (w * 0.05)
@@ -73,13 +90,19 @@ def crop_to_icon(img: Image.Image) -> Image.Image:
         min_y = best_y
         max_y = best_y + side
 
-    pad = 6
-    min_x = max(0, min_x - pad)
-    min_y = max(0, min_y - pad)
-    max_x = min(w, max_x + pad)
-    max_y = min(h, max_y + pad)
+    # Expand to include the white rounded frame around the colorful content
+    # (saturation-based detection misses the white border)
+    expand_frac = 0.12  # 12% outward on each side
+    cur_w = max_x - min_x
+    cur_h = max_y - min_y
+    pad_x = int(cur_w * expand_frac)
+    pad_y = int(cur_h * expand_frac)
+    min_x = max(0, min_x - pad_x)
+    min_y = max(0, min_y - pad_y)
+    max_x = min(w, max_x + pad_x)
+    max_y = min(h, max_y + pad_y)
 
-    cropped = img.convert("RGBA").crop((min_x, min_y, max_x, max_y))
+    cropped = img_rgba.crop((min_x, min_y, max_x, max_y))
     cw, ch = cropped.size
     side = max(cw, ch)
     square = Image.new("RGBA", (side, side), (255, 255, 255, 0))
