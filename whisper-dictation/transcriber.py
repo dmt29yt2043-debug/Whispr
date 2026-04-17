@@ -1,11 +1,21 @@
-"""Transcription module — OpenAI Whisper API with local faster-whisper fallback."""
+"""Transcription — OpenAI Whisper API, faster-whisper local, or auto-fallback.
+
+Mode:
+  - cloud: API only (fail if no internet/no key)
+  - local: faster-whisper only (offline)
+  - auto: try API first, fall back to local
+
+Post-processing with anti-hallucination filter.
+"""
 
 import os
 import logging
-
 from typing import Optional
 
 from openai import OpenAI
+
+import settings as S
+from anti_hallucination import filter_transcription
 
 log = logging.getLogger(__name__)
 
@@ -34,34 +44,68 @@ def _get_local_model():
     return _local_model
 
 
-def transcribe(audio_path: str) -> str:
-    """Transcribe audio file. Tries OpenAI API first, falls back to local model."""
-    # Try OpenAI API
-    client = _get_openai_client()
-    if client:
-        try:
-            with open(audio_path, "rb") as f:
-                response = client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=f,
-                )
-            text = response.text.strip()
-            if text:
-                log.info("Transcribed via OpenAI API (%d chars)", len(text))
-                return text
-        except Exception as e:
-            log.warning("OpenAI API failed, falling back to local model: %s", e)
+def warmup_local_model() -> None:
+    """Pre-load the local model (no-op if cloud mode)."""
+    mode = S.get("mode", S.MODE_AUTO)
+    if mode in (S.MODE_LOCAL, S.MODE_AUTO):
+        _get_local_model()
 
-    # Fallback to local model
+
+def _transcribe_api(audio_path: str) -> Optional[str]:
+    client = _get_openai_client()
+    if not client:
+        return None
+    try:
+        with open(audio_path, "rb") as f:
+            response = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=f,
+            )
+        return (response.text or "").strip()
+    except Exception as e:
+        log.warning("OpenAI API failed: %s", e)
+        return None
+
+
+def _transcribe_local(audio_path: str) -> Optional[str]:
     model = _get_local_model()
     if model is None:
-        return ""
-
+        return None
     try:
         segments, _info = model.transcribe(audio_path, beam_size=5)
         text = " ".join(seg.text.strip() for seg in segments).strip()
-        log.info("Transcribed via local model (%d chars)", len(text))
         return text
     except Exception as e:
         log.error("Local transcription failed: %s", e)
+        return None
+
+
+def transcribe(audio_path: str) -> str:
+    """Transcribe audio file. Returns cleaned text (or empty if hallucination)."""
+    mode = S.get("mode", S.MODE_AUTO)
+
+    raw = None
+    if mode == S.MODE_CLOUD:
+        raw = _transcribe_api(audio_path)
+    elif mode == S.MODE_LOCAL:
+        raw = _transcribe_local(audio_path)
+    else:  # auto
+        raw = _transcribe_api(audio_path)
+        if raw is None or not raw:
+            log.info("Falling back to local transcription")
+            raw = _transcribe_local(audio_path)
+
+    if not raw:
         return ""
+
+    log.info("Transcribed (mode=%s, %d chars): %r", mode, len(raw), raw[:80])
+
+    # Anti-hallucination filter
+    filtered = filter_transcription(raw)
+    if filtered != raw:
+        if not filtered:
+            log.warning("Transcription rejected by anti-hallucination filter")
+        else:
+            log.info("Anti-hallucination cleaned: %r -> %r", raw[:60], filtered[:60])
+
+    return filtered

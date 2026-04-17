@@ -24,6 +24,20 @@ _MIN_HOLD = 0.15  # seconds
 
 def _listener_process(conn):
     """Run in a subprocess — listens for Right Option and sends events via pipe."""
+    # Silence all logging in the child to avoid duplicate messages in parent's log
+    import logging as _logging
+    _logging.getLogger().handlers.clear()
+    _logging.getLogger().addHandler(_logging.NullHandler())
+
+    # Also suppress stdout/stderr in the child (parent captures only via pipe events)
+    import sys, os as _os
+    try:
+        devnull = open(_os.devnull, "w")
+        sys.stdout = devnull
+        sys.stderr = devnull
+    except Exception:
+        pass
+
     from pynput import keyboard
 
     TRIGGER = keyboard.Key.alt_r

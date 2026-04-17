@@ -10,3 +10,4 @@ faster-whisper>=1.0.0
 pyobjc-core>=10.0
 pyobjc-framework-Cocoa>=10.0
 pyobjc-framework-Quartz>=10.0
+webrtcvad>=2.0.10

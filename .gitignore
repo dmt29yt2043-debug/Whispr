@@ -4,3 +4,9 @@ __pycache__/
 *.wav
 *.DS_Store
 .claude/
+whisper-dictation/build/
+whisper-dictation/dist/
+whisper-dictation/icon.iconset/
+whisper-dictation/icon_preview.png
+whisper-dictation/fn_debug.py
+whisper-dictation/fn_test.py
