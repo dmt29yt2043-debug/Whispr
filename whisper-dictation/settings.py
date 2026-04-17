@@ -29,8 +29,10 @@ DEFAULTS: Dict[str, Any] = {
     "vad_enabled": True,               # strip silence before transcription
     "always_english": False,           # translate to English
     "user_style": "",                  # free-form user style hint
-    "restore_clipboard": True,         # restore clipboard after paste
+    "restore_clipboard": False,        # restore previous clipboard after paste
     "check_focus": True,               # check AX focus before paste
+    "hotkey": "right_option",          # right_option | left_option | right_cmd |
+                                       # caps_lock | right_shift | f13..f19
 }
 
 

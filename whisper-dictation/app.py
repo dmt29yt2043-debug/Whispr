@@ -219,26 +219,24 @@ class WhisperDictationApp(rumps.App):
         )
 
     def _show_settings(self, _sender=None) -> None:
-        """Show settings dialog — mode, tone, toggles."""
+        """Show settings dialog — mode, tone, hotkey, toggles."""
         current_mode = S.get("mode", S.MODE_AUTO)
         cleanup_on = S.get("cleanup_enabled", True)
         tone = S.get("base_tone", S.TONE_NEUTRAL)
         force_mic = S.get("force_builtin_mic", True)
         vad_on = S.get("vad_enabled", True)
         check_focus = S.get("check_focus", True)
-        restore_clip = S.get("restore_clipboard", True)
+        restore_clip = S.get("restore_clipboard", False)
         always_en = S.get("always_english", False)
+        hotkey = S.get("hotkey", "right_option")
 
         def _check(v): return "✓" if v else " "
 
         summary = (
             f"Current settings:\n\n"
-            f"Mode:                {current_mode.upper()}\n"
-            f"  cloud = OpenAI API only\n"
-            f"  local = faster-whisper offline\n"
-            f"  auto  = cloud with local fallback\n\n"
-            f"Tone:                {tone}\n"
-            f"  (neutral / professional / casual / raw)\n\n"
+            f"Hotkey:  {hotkey}\n"
+            f"Mode:    {current_mode.upper()}\n"
+            f"Tone:    {tone}\n\n"
             f"[{_check(cleanup_on)}] GPT cleanup (filler removal)\n"
             f"[{_check(force_mic)}] Force built-in microphone\n"
             f"[{_check(vad_on)}] Voice Activity Detection\n"
@@ -250,15 +248,52 @@ class WhisperDictationApp(rumps.App):
         response = rumps.alert(
             title="⚙️ Settings",
             message=summary,
-            ok="Change Mode",
+            ok="Change Hotkey",
             cancel="Close",
             other="More...",
         )
 
         if response == 1:
-            self._change_mode()
+            self._change_hotkey()
         elif response == 2:
             self._change_other_setting()
+
+    def _change_hotkey(self) -> None:
+        current = S.get("hotkey", "right_option")
+        message = (
+            f"Current hotkey: {current}\n\n"
+            "NOTE: Fn/Globe key cannot be captured from Python apps on macOS.\n"
+            "It is intercepted by the system.\n\n"
+            "Available keys:\n"
+            "  right_option   (⌥ right, default)\n"
+            "  left_option    (⌥ left)\n"
+            "  right_cmd      (⌘ right)\n"
+            "  left_cmd       (⌘ left — conflicts)\n"
+            "  right_shift    (⇧ right)\n"
+            "  right_ctrl     (⌃ right)\n"
+            "  caps_lock      (⇪)\n"
+            "  f13...f19      (function row on big keyboards)\n\n"
+            "Type the key name below:"
+        )
+        w = rumps.Window(
+            message=message, title="Change Hotkey",
+            default_text=current, ok="Save", cancel="Cancel",
+            dimensions=(300, 25),
+        )
+        r = w.run()
+        if not r.clicked:
+            return
+        new_key = r.text.strip().lower()
+        valid = {"right_option", "left_option", "right_cmd", "left_cmd",
+                 "right_shift", "left_shift", "right_ctrl", "caps_lock",
+                 "f13", "f14", "f15", "f16", "f17", "f18", "f19"}
+        if new_key in valid:
+            S.set("hotkey", new_key)
+            self.hotkey.restart_with_new_key()
+            self._notify("Hotkey", f"Changed to: {new_key}")
+            log.info("Hotkey changed to: %s", new_key)
+        else:
+            rumps.alert("Invalid", message=f"Unknown key: {new_key}")
 
     def _change_mode(self) -> None:
         current = S.get("mode", S.MODE_AUTO)
@@ -293,6 +328,7 @@ class WhisperDictationApp(rumps.App):
     def _change_other_setting(self) -> None:
         message = (
             "Type a setting name and new value, space-separated:\n\n"
+            "mode <cloud|local|auto>\n"
             "tone <neutral|professional|casual|raw>\n"
             "cleanup <on|off>\n"
             "mic <on|off>           (force built-in mic)\n"
@@ -322,7 +358,15 @@ class WhisperDictationApp(rumps.App):
         key, value = parts[0].lower(), parts[1].strip()
         bool_map = {"on": True, "off": False, "true": True, "false": False, "yes": True, "no": False}
 
-        if key == "tone":
+        if key == "mode":
+            if value in (S.MODE_CLOUD, S.MODE_LOCAL, S.MODE_AUTO):
+                S.set("mode", value)
+                self._notify("Settings", f"Mode: {value}")
+                if value in (S.MODE_LOCAL, S.MODE_AUTO):
+                    threading.Thread(target=warmup_local_model, daemon=True).start()
+            else:
+                rumps.alert("Invalid", message="Use: cloud, local, or auto")
+        elif key == "tone":
             if value in (S.TONE_NEUTRAL, S.TONE_PROFESSIONAL, S.TONE_CASUAL, S.TONE_RAW):
                 S.set("base_tone", value)
                 self._notify("Settings", f"Tone: {value}")
