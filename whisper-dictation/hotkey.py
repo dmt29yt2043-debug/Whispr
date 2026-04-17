@@ -65,6 +65,13 @@ def _listener_process(conn, key_name: str):
     except Exception:
         pass
 
+    # Hide this subprocess from the Dock (accessory activation policy)
+    try:
+        from AppKit import NSApplication
+        NSApplication.sharedApplication().setActivationPolicy_(1)
+    except Exception:
+        pass
+
     from pynput import keyboard
 
     TRIGGER = _resolve_pynput_key(key_name)

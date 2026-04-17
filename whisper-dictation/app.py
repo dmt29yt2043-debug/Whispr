@@ -13,30 +13,53 @@ import threading
 import rumps
 from dotenv import load_dotenv
 
-# Override Python's app identity BEFORE rumps/AppKit starts using it.
-# This changes the icon in alerts/dialogs from Python to our custom one.
+# Only the MAIN process should touch NSApplication (set name/icon/policy).
+# multiprocessing children re-import this module as __mp_main__ — if we set
+# the activation policy there too, the child shows up in the Dock.
+_IS_MAIN_PROC = __name__ in ("__main__", "app")
+
+
 def _set_app_identity():
     try:
-        from AppKit import NSBundle, NSImage, NSApplication
-        # Set bundle name + display name (shown in alerts)
+        from AppKit import (
+            NSBundle, NSImage, NSApplication,
+        )
+        # NSApplicationActivationPolicyAccessory = 1
+        # (menu bar app, no Dock icon, no app switcher entry)
+        app = NSApplication.sharedApplication()
+        app.setActivationPolicy_(1)
+
+        # Bundle name / display name (used in alerts)
         bundle = NSBundle.mainBundle()
         info = bundle.localizedInfoDictionary() or bundle.infoDictionary()
         if info is not None:
             info["CFBundleName"] = "Whisper Dictation"
             info["CFBundleDisplayName"] = "Whisper Dictation"
 
-        # Set app icon
+        # App icon shown in alerts
         here = os.path.dirname(os.path.abspath(__file__))
         icon_path = os.path.join(here, "icon.icns")
         if os.path.exists(icon_path):
-            app = NSApplication.sharedApplication()
             img = NSImage.alloc().initWithContentsOfFile_(icon_path)
             if img is not None:
                 app.setApplicationIconImage_(img)
     except Exception:
         pass
 
-_set_app_identity()
+
+def _hide_child_from_dock():
+    """For multiprocessing children — hide from Dock but don't load the icon."""
+    try:
+        from AppKit import NSApplication
+        NSApplication.sharedApplication().setActivationPolicy_(1)
+    except Exception:
+        pass
+
+
+if _IS_MAIN_PROC:
+    _set_app_identity()
+else:
+    _hide_child_from_dock()
 
 from recorder import Recorder
 from transcriber import transcribe, warmup_local_model
@@ -102,6 +125,7 @@ class WhisperDictationApp(rumps.App):
         S.load()
 
         self.recorder = Recorder(force_builtin=S.get("force_builtin_mic", True))
+        # Feed audio levels to the overlay equalizer
 
         # Hotkey: if user selected "fn", try CGEventTap on main run loop.
         # Otherwise (or if Fn fails to receive events) use pynput subprocess.
@@ -112,6 +136,8 @@ class WhisperDictationApp(rumps.App):
         self.hotkey = FnKeyHandler(on_start=self._on_record_start, on_stop=self._on_record_stop)
 
         self.overlay = StatusOverlay()
+        # Connect audio level stream to overlay bars
+        self.recorder.set_level_callback(self.overlay.push_level)
 
         # Menu items
         self.record_item = rumps.MenuItem("🔴 Start Recording", callback=self._toggle_recording)
