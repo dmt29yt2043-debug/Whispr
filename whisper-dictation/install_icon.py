@@ -3,7 +3,7 @@
 import os
 import subprocess
 import sys
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter
 
 SRC = "/Users/maxsnigirev/Downloads/Gemini_Generated_Image_8d87l8d87l8d87l8.png"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -91,8 +91,7 @@ def crop_to_icon(img: Image.Image) -> Image.Image:
         max_y = best_y + side
 
     # Expand to include the white rounded frame around the colorful content
-    # (saturation-based detection misses the white border)
-    expand_frac = 0.12  # 12% outward on each side
+    expand_frac = 0.12
     cur_w = max_x - min_x
     cur_h = max_y - min_y
     pad_x = int(cur_w * expand_frac)
@@ -103,11 +102,67 @@ def crop_to_icon(img: Image.Image) -> Image.Image:
     max_y = min(h, max_y + pad_y)
 
     cropped = img_rgba.crop((min_x, min_y, max_x, max_y))
+
+    # Remove the fake checkerboard background:
+    # flood-fill from each corner replacing grey/white patterns with transparency.
+    cropped = _remove_fake_background(cropped)
+
     cw, ch = cropped.size
     side = max(cw, ch)
-    square = Image.new("RGBA", (side, side), (255, 255, 255, 0))
-    square.paste(cropped, ((side - cw) // 2, (side - ch) // 2))
+    square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    square.paste(cropped, ((side - cw) // 2, (side - ch) // 2), cropped)
     return square
+
+
+def _remove_fake_background(img: Image.Image) -> Image.Image:
+    """Detect and remove the fake checkerboard/white background around the icon.
+
+    Uses flood-fill from the 4 corners. Any pixel reachable from a corner
+    (through connected grey/white pixels within a color tolerance) is marked
+    as background and gets alpha=0.
+    """
+    import numpy as np
+    img = img.convert("RGBA")
+    arr = np.array(img)
+    h, w, _ = arr.shape
+
+    r = arr[:, :, 0].astype(np.int16)
+    g = arr[:, :, 1].astype(np.int16)
+    b = arr[:, :, 2].astype(np.int16)
+
+    # A pixel is "background-like" if it's mostly grey (low saturation)
+    # AND lightish (brightness > 170) — i.e. part of the checkerboard.
+    mx = np.maximum(np.maximum(r, g), b)
+    mn = np.minimum(np.minimum(r, g), b)
+    sat = np.zeros_like(mx, dtype=np.float32)
+    nonzero = mx > 0
+    sat[nonzero] = (mx[nonzero] - mn[nonzero]) / np.maximum(mx[nonzero], 1)
+    brightness = (r + g + b) / 3.0
+    bg_like = (sat < 0.08) & (brightness > 170)
+
+    # Flood fill from each corner over bg_like pixels. BFS using a queue.
+    visited = np.zeros((h, w), dtype=bool)
+    from collections import deque
+    q = deque()
+    for (cx, cy) in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]:
+        if bg_like[cy, cx]:
+            q.append((cx, cy))
+            visited[cy, cx] = True
+
+    while q:
+        x, y = q.popleft()
+        for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < w and 0 <= ny < h and not visited[ny, nx] and bg_like[ny, nx]:
+                visited[ny, nx] = True
+                q.append((nx, ny))
+
+    # Set alpha=0 for background-flood pixels
+    arr[:, :, 3] = np.where(visited, 0, 255)
+
+    # Smooth the alpha edge a bit so the rounded corner doesn't look jagged
+    result = Image.fromarray(arr, mode="RGBA")
+    return result
 
 
 def main():
