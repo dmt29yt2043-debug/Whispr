@@ -81,7 +81,9 @@ from stats import (
 )
 from sounds import play_start, play_stop
 from hotkey import FnKeyHandler
+from repaste_hotkey import RePasteHotkey
 from overlay import StatusOverlay
+import injector as _injector
 from focus_check import get_focused_text_info
 import settings as S
 import vad
@@ -142,6 +144,8 @@ class WhisperDictationApp(rumps.App):
             on_start=self._on_record_start,
             on_stop=self._on_record_stop,
         )
+        # Secondary hotkey — Cmd+Shift+V re-pastes the last transcription
+        self.repaste_hotkey = RePasteHotkey(on_trigger=self._on_repaste)
 
         self.overlay = StatusOverlay()
         self.recorder.set_level_callback(self.overlay.push_level)
@@ -174,6 +178,14 @@ class WhisperDictationApp(rumps.App):
             self._on_record_stop()
         else:
             self._on_record_start()
+
+    def _on_repaste(self) -> None:
+        """Triggered by Cmd+Shift+V — re-paste the last transcription."""
+        ok = _injector.repaste_last()
+        if ok:
+            self.overlay.show_done("↻ " + _injector.get_last_transcription())
+        else:
+            self.overlay.show_error("Nothing to re-paste")
 
     def _set_title_safe(self, title: str, record_item_title: str = None) -> None:
         """Update menu bar title on the main thread (AppKit is not thread-safe)."""
@@ -248,8 +260,9 @@ class WhisperDictationApp(rumps.App):
                 # Step 4: GPT cleanup with per-app tone
                 final_text = clean_text(raw_text, bundle_id=self._recording_bundle_id)
 
-            # Step 5: Record stats
+            # Step 5: Record stats + remember text for re-paste hotkey
             record_words(final_text)
+            _injector.set_last_transcription(final_text)
 
             # Step 6: Inject with focus check + clipboard restore
             result = inject_text(
@@ -576,6 +589,8 @@ def main():
             "Failed to install hotkey tap. Grant Accessibility to "
             "Whisper Dictation.app in System Settings > Privacy & Security."
         )
+    # Install re-paste hotkey (Cmd+Shift+V)
+    app.repaste_hotkey.start()
 
     # TEMP: not switching to accessory — testing menu bar visibility
     # threading.Thread(target=_hide_from_dock_later, daemon=True).start()

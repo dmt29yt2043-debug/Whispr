@@ -23,6 +23,20 @@ log = logging.getLogger(__name__)
 
 V_KEY_CODE = 9  # 'V' on macOS
 
+# Module-level cache of the last transcription so the re-paste hotkey
+# can recover text if the user's cursor was off-target at paste time.
+_last_transcription: str = ""
+
+
+def get_last_transcription() -> str:
+    """Return the most recent transcription (may be empty)."""
+    return _last_transcription
+
+
+def set_last_transcription(text: str) -> None:
+    global _last_transcription
+    _last_transcription = text or ""
+
 
 def _press_cmd_v() -> None:
     """Simulate Cmd+V via Quartz CGEvents."""
@@ -33,6 +47,25 @@ def _press_cmd_v() -> None:
     up = CGEventCreateKeyboardEvent(None, V_KEY_CODE, False)
     CGEventSetFlags(up, kCGEventFlagMaskCommand)
     CGEventPost(kCGHIDEventTap, up)
+
+
+def repaste_last() -> bool:
+    """Copy last transcription to clipboard and simulate Cmd+V.
+
+    Returns True if there was a transcription to paste.
+    """
+    if not _last_transcription:
+        log.info("Re-paste requested but no previous transcription")
+        return False
+    try:
+        pyperclip.copy(_last_transcription)
+        time.sleep(0.05)
+        _press_cmd_v()
+        log.info("Re-pasted last transcription (%d chars)", len(_last_transcription))
+        return True
+    except Exception as e:
+        log.error("Re-paste failed: %s", e)
+        return False
 
 
 def inject_text(

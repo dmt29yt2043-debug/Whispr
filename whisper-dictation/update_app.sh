@@ -53,6 +53,11 @@ zip -q -r "$BUNDLE_ZIP" .
 cd "$OLDPWD"
 rm -rf "$STAGE"
 
+echo "== Copy app.py entry point =="
+# py2app runs Contents/Resources/app.py as the entry module, NOT the .pyc
+# in the zip. So we must also overwrite the source file.
+cp app.py "$APP/Contents/Resources/app.py"
+
 echo "== Relaunch =="
 open -a "Whisper Dictation"
 echo "Done. Icon should appear in menu bar within a few seconds."
