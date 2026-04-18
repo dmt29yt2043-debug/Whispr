@@ -24,19 +24,19 @@ from PyObjCTools import AppHelper
 
 log = logging.getLogger(__name__)
 
-# ── Sizing ───────────────────────────────────────────────────────────
-_WINDOW_W = 180
-_WINDOW_H = 44
+# ── Sizing (40% smaller than previous 180x44) ────────────────────────
+_WINDOW_W = 108
+_WINDOW_H = 26
 _CORNER_RADIUS = _WINDOW_H / 2  # full pill
-_MARGIN_RIGHT = 20
+_MARGIN_RIGHT = 18
 _MARGIN_TOP = 6
 
 # ── Equalizer ────────────────────────────────────────────────────────
 _BAR_COUNT = 14
-_BAR_WIDTH = 3
-_BAR_GAP = 4
-_BAR_MIN_HEIGHT = 4
-_BAR_MAX_HEIGHT = 22
+_BAR_WIDTH = 2
+_BAR_GAP = 2
+_BAR_MIN_HEIGHT = 3
+_BAR_MAX_HEIGHT = 14
 
 # Colors for the gradient (cyan → purple)
 _BAR_COLOR_START = (0.22, 0.62, 0.96)   # cyan-blue
@@ -81,52 +81,85 @@ class _OverlayView(NSView):
         return self
 
     def _draw_mic(self, center_x: float, center_y: float, size: float):
-        """Draw a simple blue-gradient microphone icon (vector, no image)."""
-        # Mic body capsule
-        body_w = size * 0.50
-        body_h = size * 0.65
-        body_x = center_x - body_w / 2
-        body_y = center_y - body_h / 2 + size * 0.05
+        """Draw the line-art microphone from the reference image.
 
-        # Gradient fill for body
-        mic_top = NSColor.colorWithRed_green_blue_alpha_(0.35, 0.55, 0.95, 1.0)
-        mic_bot = NSColor.colorWithRed_green_blue_alpha_(0.20, 0.30, 0.75, 1.0)
-        body_path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
-            NSMakeRect(body_x, body_y, body_w, body_h), body_w / 2, body_w / 2
+        Dark navy blue outline style:
+          - Capsule-shaped head with 3 horizontal grille lines
+          - U-shaped stand arc under the head
+          - Thin vertical stem
+          - Short horizontal base
+        """
+        # Dark navy blue matching the reference
+        mic_color = NSColor.colorWithRed_green_blue_alpha_(0.13, 0.19, 0.48, 1.0)
+        mic_color.set()
+
+        line_w = max(1.0, size / 18.0)
+
+        # Head capsule (outlined, not filled)
+        head_w = size * 0.42
+        head_h = size * 0.52
+        head_x = center_x - head_w / 2
+        head_y = center_y - head_h / 2 + size * 0.08
+        head_rect = NSMakeRect(head_x, head_y, head_w, head_h)
+        head_path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+            head_rect, head_w / 2, head_w / 2
         )
-        gradient = NSGradient.alloc().initWithStartingColor_endingColor_(mic_bot, mic_top)
-        gradient.drawInBezierPath_angle_(body_path, 90.0)
+        head_path.setLineWidth_(line_w)
+        head_path.stroke()
 
-        # Base / stand U-shape under mic
-        stand_color = NSColor.colorWithRed_green_blue_alpha_(0.20, 0.30, 0.75, 1.0)
-        stand_color.set()
-        arc_w = size * 0.70
-        arc_h = size * 0.25
+        # 3 horizontal grille lines inside the head
+        n_lines = 3
+        inset_x = head_w * 0.22
+        line_y_start = head_y + head_h * 0.22
+        line_y_end = head_y + head_h * 0.78
+        for i in range(n_lines):
+            t = i / (n_lines - 1) if n_lines > 1 else 0.5
+            ly = line_y_start + t * (line_y_end - line_y_start)
+            grille = NSBezierPath.bezierPath()
+            grille.moveToPoint_((head_x + inset_x, ly))
+            grille.lineToPoint_((head_x + head_w - inset_x, ly))
+            grille.setLineWidth_(line_w * 0.8)
+            grille.setLineCapStyle_(1)  # round cap
+            grille.stroke()
+
+        # U-shaped stand arc under the head
+        arc_w = size * 0.58
         arc_x = center_x - arc_w / 2
-        arc_y = body_y - arc_h * 0.3
-        arc_path = NSBezierPath.bezierPath()
-        arc_path.appendBezierPathWithArcWithCenter_radius_startAngle_endAngle_(
-            (center_x, arc_y), arc_w / 2, 180.0, 360.0
+        arc_top_y = head_y - size * 0.04   # top of arc (where it meets head sides)
+        arc_bot_y = arc_top_y - size * 0.14  # bottom of arc
+
+        arc = NSBezierPath.bezierPath()
+        # Draw a half-ellipse opening upward (U-shape)
+        # Using cubic curves for smoothness
+        arc.moveToPoint_((arc_x, arc_top_y))
+        arc.curveToPoint_controlPoint1_controlPoint2_(
+            (center_x + arc_w / 2, arc_top_y),
+            (arc_x, arc_bot_y - size * 0.02),
+            (center_x + arc_w / 2, arc_bot_y - size * 0.02),
         )
-        arc_path.setLineWidth_(max(1.6, size / 14))
-        arc_path.stroke()
+        arc.setLineWidth_(line_w)
+        arc.setLineCapStyle_(1)
+        arc.stroke()
 
-        # Stand vertical bar
-        stand_w = max(1.6, size / 14)
-        stand_x = center_x - stand_w / 2
-        stand_y_top = arc_y - stand_w / 2
-        stand_y_bot = arc_y - size * 0.18
-        stand_rect = NSMakeRect(stand_x, stand_y_bot, stand_w, stand_y_top - stand_y_bot)
-        NSBezierPath.bezierPathWithRect_(stand_rect).fill()
+        # Vertical stem below the arc
+        stem_top = arc_bot_y + size * 0.01
+        stem_bot = stem_top - size * 0.14
+        stem = NSBezierPath.bezierPath()
+        stem.moveToPoint_((center_x, stem_top))
+        stem.lineToPoint_((center_x, stem_bot))
+        stem.setLineWidth_(line_w)
+        stem.setLineCapStyle_(1)
+        stem.stroke()
 
-        # Stand base (horizontal)
-        base_w = size * 0.32
-        base_h = stand_w
-        base_x = center_x - base_w / 2
-        base_y = stand_y_bot
-        NSBezierPath.bezierPathWithRect_(
-            NSMakeRect(base_x, base_y, base_w, base_h)
-        ).fill()
+        # Horizontal base
+        base_w = size * 0.30
+        base_y = stem_bot
+        base = NSBezierPath.bezierPath()
+        base.moveToPoint_((center_x - base_w / 2, base_y))
+        base.lineToPoint_((center_x + base_w / 2, base_y))
+        base.setLineWidth_(line_w)
+        base.setLineCapStyle_(1)
+        base.stroke()
 
     def setLevels_(self, levels):
         self._levels = list(levels[-_BAR_COUNT:])
