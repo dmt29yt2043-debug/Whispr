@@ -143,8 +143,35 @@ class FnKeyHandler:
     def start(self) -> bool:
         """Install the CGEventTap on the main run loop. Returns True on success.
 
-        Must be called from the main thread BEFORE NSApplication.run().
+        If it fails (Accessibility not granted), a background retry loop is
+        started that keeps trying every few seconds.
         """
+        ok = self._install_tap()
+        if not ok:
+            # Start background retry — user might grant Accessibility at any time
+            threading.Thread(target=self._retry_loop, daemon=True).start()
+        return ok
+
+    def _retry_loop(self) -> None:
+        import time as _t
+        from PyObjCTools import AppHelper
+        while True:
+            _t.sleep(3)
+            if self._tap is not None:
+                return
+
+            # Try installing on the main thread
+            result = {"ok": False}
+            def _try():
+                result["ok"] = self._install_tap()
+            AppHelper.callAfter(_try)
+            # Give main thread time to process
+            _t.sleep(0.5)
+            if self._tap is not None:
+                log.info("Hotkey tap installed on retry — Accessibility granted")
+                return
+
+    def _install_tap(self) -> bool:
         self._callback_ref = self._event_callback
 
         # Build the event mask based on hotkey type
