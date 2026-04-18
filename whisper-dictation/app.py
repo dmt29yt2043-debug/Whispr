@@ -175,17 +175,29 @@ class WhisperDictationApp(rumps.App):
         else:
             self._on_record_start()
 
+    def _set_title_safe(self, title: str, record_item_title: str = None) -> None:
+        """Update menu bar title on the main thread (AppKit is not thread-safe)."""
+        from PyObjCTools import AppHelper
+        def _do():
+            try:
+                self.title = title
+                if record_item_title is not None:
+                    self.record_item.title = record_item_title
+            except Exception:
+                pass
+        AppHelper.callAfter(_do)
+
     def _on_record_start(self) -> None:
-        self.recorder.start()
-        play_start()
-        self.title = ICON_REC
-        self.record_item.title = "⏹ Stop Recording"
-        self.overlay.show_recording()
-        # Capture bundle ID at recording start (before we lose focus)
+        # Capture bundle ID FIRST (before UI updates change focus)
         try:
             _, self._recording_bundle_id = get_focused_text_info()
         except Exception:
             self._recording_bundle_id = None
+
+        self.recorder.start()
+        play_start()
+        self._set_title_safe(ICON_REC, "⏹ Stop Recording")
+        self.overlay.show_recording()
         log.info("Recording started (app: %s)", self._recording_bundle_id)
 
     def _on_record_stop(self) -> None:
@@ -193,13 +205,12 @@ class WhisperDictationApp(rumps.App):
         play_stop()
 
         if audio_path is None:
-            self.title = ICON_IDLE
-            self.record_item.title = "🔴 Start Recording"
+            self._set_title_safe(ICON_IDLE, "🔴 Start Recording")
             self.overlay.hide()
             log.info("Recording too short, ignored")
             return
 
-        self.title = ICON_PROCESSING
+        self._set_title_safe(ICON_PROCESSING)
         self.overlay.show_processing()
         log.info("Processing audio: %s", audio_path)
 
