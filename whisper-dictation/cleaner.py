@@ -1,6 +1,7 @@
 """Text cleanup — GPT-4o-mini with per-app tone, or raw-pass in local mode."""
 
 import os
+import re
 import logging
 from typing import Optional
 
@@ -10,6 +11,17 @@ import settings as S
 import stats as _stats
 
 log = logging.getLogger(__name__)
+
+
+# Fast local check: does the text contain common filler/disfluency words?
+# If not, we can skip the expensive GPT call entirely.
+_FILLER_RE = re.compile(
+    r"\b("
+    r"um|uh|uhm|erm|like|you know|i mean|sort of|kind of|"
+    r"ну|эм|э+|мм+|типа|короче|это самое|в общем|как бы|вот|значит"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 _TONE_INSTRUCTIONS = {
@@ -55,6 +67,11 @@ def _resolve_tone(bundle_id: Optional[str] = None) -> str:
     return S.get("base_tone", S.TONE_NEUTRAL)
 
 
+# Skip GPT cleanup for short phrases — filler words rarely appear
+# in short dictations and the network round-trip costs ~2s.
+_SHORT_PHRASE_MAX_WORDS = 4
+
+
 def clean_text(raw_text: str, bundle_id: Optional[str] = None) -> str:
     """Clean up raw transcription using GPT-4o-mini.
 
@@ -85,6 +102,19 @@ def clean_text(raw_text: str, bundle_id: Optional[str] = None) -> str:
         return raw_text
     if mode == S.MODE_LOCAL:
         log.info("Local mode — skipping GPT cleanup, returning raw text")
+        return raw_text
+
+    # Skip cleanup for short phrases: saves ~2s of API round-trip,
+    # and short phrases rarely contain filler words worth removing
+    word_count = len(raw_text.split())
+    if word_count <= _SHORT_PHRASE_MAX_WORDS:
+        log.info("Short phrase (%d words) — skipping cleanup", word_count)
+        return raw_text
+
+    # Fast local check: if no filler words, skip cleanup entirely.
+    # This saves ~2s on clean dictations (most of them).
+    if not _FILLER_RE.search(raw_text):
+        log.info("No filler words detected — skipping cleanup")
         return raw_text
 
     api_key = os.environ.get("OPENAI_API_KEY")

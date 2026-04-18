@@ -12,8 +12,10 @@ _CONFIG_DIR = os.path.expanduser("~/.whisper-dictation")
 _DB_PATH = os.path.join(_CONFIG_DIR, "stats.db")
 
 # OpenAI pricing (USD) — update here if rates change
-# Whisper API: $0.006 per minute = $0.0001/sec
-PRICE_WHISPER_PER_SEC = 0.006 / 60.0
+# gpt-4o-mini-transcribe: $0.003 per minute (we use this first)
+# whisper-1: $0.006 per minute (fallback)
+# We report an average; actual $ per request may vary by model used.
+PRICE_WHISPER_PER_SEC = 0.003 / 60.0
 
 # GPT-4o-mini: $0.15 per 1M input tokens, $0.60 per 1M output tokens
 PRICE_GPT4O_MINI_INPUT_PER_TOKEN = 0.15 / 1_000_000

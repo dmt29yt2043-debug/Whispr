@@ -50,6 +50,7 @@ class Recorder:
         self._force_builtin = force_builtin
         self._current_level = 0.0  # 0..1 RMS level, for overlay
         self._level_callback = None
+        self._last_level_time = 0.0  # throttle callback to ~20 fps max
 
     @property
     def is_recording(self) -> bool:
@@ -61,8 +62,9 @@ class Recorder:
         return self._current_level
 
     def set_level_callback(self, cb):
-        """Register a callback(level: float) called on each audio chunk."""
+        """Register a callback(level: float) called during recording."""
         self._level_callback = cb
+        self._persistent_level_callback = cb  # re-attached on each start()
 
     def start(self) -> None:
         """Start recording audio from the preferred microphone."""
@@ -72,6 +74,10 @@ class Recorder:
             self._frames.clear()
             self._recording = True
             self._current_level = 0.0
+            self._last_level_time = 0.0
+            # Re-attach level callback (stop() detaches it to avoid hangs)
+            if hasattr(self, "_persistent_level_callback"):
+                self._level_callback = self._persistent_level_callback
 
             device = _find_builtin_mic_index() if self._force_builtin else None
 
@@ -97,27 +103,37 @@ class Recorder:
 
     def stop(self) -> Optional[str]:
         """Stop recording and return path to the temp WAV file, or None if too short."""
+        # Detach the level callback FIRST so audio callback stops posting UI updates.
+        # Otherwise stream.stop() can deadlock waiting for pending AppHelper.callAfter's.
+        self._level_callback = None
+
         with self._lock:
             if not self._recording:
                 return None
             self._recording = False
-            if self._stream:
-                self._stream.stop()
-                self._stream.close()
-                self._stream = None
+            stream = self._stream
+            self._stream = None
 
-            if not self._frames:
-                return None
+        # Stop+close OUTSIDE the lock so audio callback (holds no lock) can finish cleanly
+        if stream is not None:
+            try:
+                stream.stop()
+                stream.close()
+            except Exception as log_err:
+                log.warning("Stream stop error: %s", log_err)
 
-            audio = np.concatenate(self._frames, axis=0)
-            duration = len(audio) / SAMPLE_RATE
+        if not self._frames:
+            return None
 
-            if duration < 0.15:
-                return None
+        audio = np.concatenate(self._frames, axis=0)
+        duration = len(audio) / SAMPLE_RATE
 
-            tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-            sf.write(tmp.name, audio, SAMPLE_RATE, subtype="PCM_16")
-            return tmp.name
+        if duration < 0.15:
+            return None
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        sf.write(tmp.name, audio, SAMPLE_RATE, subtype="PCM_16")
+        return tmp.name
 
     def _audio_callback(self, indata: np.ndarray, frames: int, time_info, status) -> None:
         if status:
@@ -125,19 +141,23 @@ class Recorder:
         self._frames.append(indata.copy())
 
         # Mix RMS (average energy) + peak (max amplitude) for lively meters.
-        # Peak reacts faster to consonants/transients; RMS tracks overall loudness.
         arr = indata.astype(np.float32)
         rms = float(np.sqrt(np.mean(arr ** 2)))
         peak = float(np.max(np.abs(arr)))
-
-        # Weighted mix, then apply a power curve so quiet speech is visible
-        # but loud speech still has headroom.
         raw = 0.5 * rms + 0.5 * peak
         level = min(1.0, (raw * 10.0) ** 0.6)
 
         self._current_level = level
-        if self._level_callback:
+
+        # Throttle UI level updates to ~30 fps max (one every 33ms).
+        # Audio callback fires much faster and flooding AppHelper.callAfter
+        # was backing up the main run loop and causing stop() to hang.
+        import time as _t
+        now = _t.time()
+        cb = self._level_callback
+        if cb is not None and now - self._last_level_time >= 0.033:
+            self._last_level_time = now
             try:
-                self._level_callback(level)
+                cb(level)
             except Exception:
                 pass
