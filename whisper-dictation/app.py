@@ -77,7 +77,6 @@ from stats import (
 )
 from sounds import play_start, play_stop
 from hotkey import FnKeyHandler
-from fn_hotkey import FnHotkey
 from overlay import StatusOverlay
 from focus_check import get_focused_text_info
 import settings as S
@@ -133,18 +132,14 @@ class WhisperDictationApp(rumps.App):
         S.load()
 
         self.recorder = Recorder(force_builtin=S.get("force_builtin_mic", True))
-        # Feed audio levels to the overlay equalizer
 
-        # Hotkey: if user selected "fn", try CGEventTap on main run loop.
-        # Otherwise (or if Fn fails to receive events) use pynput subprocess.
-        self._use_fn = S.get("hotkey", "right_option") == "fn"
-        self.fn_hotkey = None
-        if self._use_fn:
-            self.fn_hotkey = FnHotkey(on_start=self._on_record_start, on_stop=self._on_record_stop)
-        self.hotkey = FnKeyHandler(on_start=self._on_record_start, on_stop=self._on_record_stop)
+        # Single unified hotkey via CGEventTap (no subprocess, no multiprocessing)
+        self.hotkey = FnKeyHandler(
+            on_start=self._on_record_start,
+            on_stop=self._on_record_stop,
+        )
 
         self.overlay = StatusOverlay()
-        # Connect audio level stream to overlay bars
         self.recorder.set_level_callback(self.overlay.push_level)
 
         # Menu items
@@ -558,33 +553,14 @@ class WhisperDictationApp(rumps.App):
 
 def main():
     app = WhisperDictationApp()
-    # Don't touch setActivationPolicy — LSUIElement in Info.plist handles
-    # Dock hiding when launched from the .app bundle. Manual calls here
-    # have been fighting rumps' own status item setup.
 
-    # Try Fn (CGEventTap on main run loop) if selected
-    fn_installed = False
-    if app.fn_hotkey is not None:
-        fn_installed = app.fn_hotkey.install()
-        if fn_installed:
-            log.info("Fn hotkey tap installed — will fall back to pynput if no events after 30s")
-        else:
-            log.warning("Fn hotkey tap install failed — falling back to pynput")
-
-    # Always start pynput subprocess as fallback/primary
-    app.hotkey.start()
-
-    # If Fn was requested, monitor whether it actually receives events
-    if app.fn_hotkey is not None and fn_installed:
-        def _fn_watchdog():
-            import time as _t
-            _t.sleep(30)
-            if not app.fn_hotkey.seen_fn_event:
-                log.warning(
-                    "Fn tap received 0 events after 30s — Fn is suppressed by macOS. "
-                    "Use a different hotkey (right_option, caps_lock, etc.)."
-                )
-        threading.Thread(target=_fn_watchdog, daemon=True).start()
+    # Install the unified hotkey tap on the main CFRunLoop before app.run()
+    ok = app.hotkey.start()
+    if not ok:
+        log.error(
+            "Failed to install hotkey tap. Grant Accessibility to "
+            "Whisper Dictation.app in System Settings > Privacy & Security."
+        )
 
     log.info("Whisper Dictation started (mode=%s, hotkey=%s).",
              S.get("mode"), S.get("hotkey"))
