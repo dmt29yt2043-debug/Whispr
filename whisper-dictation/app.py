@@ -20,28 +20,17 @@ _IS_MAIN_PROC = __name__ in ("__main__", "app")
 
 
 def _set_app_identity():
-    """Set activation policy + name + icon for the app.
-
-    The /usr/bin/python3 wrapper runs as Python.app (its own bundle),
-    so our Info.plist LSUIElement is ignored. We must programmatically
-    call setActivationPolicy(accessory=1) to hide the Dock icon and
-    make the app menu-bar-only.
-    """
+    """Set bundle name + icon. Activation policy is handled separately."""
     try:
         from AppKit import NSBundle, NSImage, NSApplication
         app = NSApplication.sharedApplication()
 
-        # Accessory = menu-bar-only. Must be called before status item is created.
-        app.setActivationPolicy_(1)
-
-        # Bundle name / display name (used in alerts)
         bundle = NSBundle.mainBundle()
         info = bundle.localizedInfoDictionary() or bundle.infoDictionary()
         if info is not None:
             info["CFBundleName"] = "Whisper Dictation"
             info["CFBundleDisplayName"] = "Whisper Dictation"
 
-        # App icon shown in alerts
         here = os.path.dirname(os.path.abspath(__file__))
         icon_path = os.path.join(here, "icon.icns")
         if os.path.exists(icon_path):
@@ -50,6 +39,21 @@ def _set_app_identity():
                 app.setApplicationIconImage_(img)
     except Exception:
         pass
+
+
+def _hide_from_dock_later():
+    """Switch to accessory mode AFTER rumps has created the status item.
+
+    NSStatusItem must be added while the app is in Regular mode; after that
+    we can flip to accessory to remove the Dock icon.
+    """
+    import time as _t
+    from AppKit import NSApplication
+    from PyObjCTools import AppHelper
+    _t.sleep(1.2)  # let rumps register its status item
+    AppHelper.callAfter(
+        lambda: NSApplication.sharedApplication().setActivationPolicy_(1)
+    )
 
 
 def _hide_child_from_dock():
@@ -561,6 +565,9 @@ def main():
             "Failed to install hotkey tap. Grant Accessibility to "
             "Whisper Dictation.app in System Settings > Privacy & Security."
         )
+
+    # TEMP: not switching to accessory — testing menu bar visibility
+    # threading.Thread(target=_hide_from_dock_later, daemon=True).start()
 
     log.info("Whisper Dictation started (mode=%s, hotkey=%s).",
              S.get("mode"), S.get("hotkey"))

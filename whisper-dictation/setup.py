@@ -34,50 +34,39 @@ if _sndfile:
 
 print(f"Bundling frameworks: {_frameworks}")
 
+_here = os.path.dirname(os.path.abspath(__file__))
+_icon = os.path.join(_here, "icon.icns")
+
 OPTIONS = {
     "argv_emulation": False,
-    "iconfile": None,  # TODO: add app icon
+    "iconfile": _icon if os.path.exists(_icon) else None,
     "frameworks": _frameworks,
+    "semi_standalone": False,  # full standalone — ship our own Python
     "plist": {
         "CFBundleName": APP_NAME,
         "CFBundleDisplayName": APP_NAME,
         "CFBundleIdentifier": "com.whisper.dictation",
         "CFBundleVersion": "1.0.0",
         "CFBundleShortVersionString": "1.0.0",
-        "LSUIElement": True,  # Menu bar only, no dock icon
-        "NSMicrophoneUsageDescription": "Whisper Dictation needs microphone access to record your voice for transcription.",
+        "LSUIElement": True,
+        "NSMicrophoneUsageDescription": "Whisper Dictation needs microphone access for voice recording.",
+        "NSAppleEventsUsageDescription": "Whisper Dictation uses Accessibility for global hotkeys.",
         "NSRequiresAquaSystemAppearance": False,
+        "LSMinimumSystemVersion": "12.0",
     },
     "includes": [
-        "recorder",
-        "transcriber",
-        "cleaner",
-        "injector",
-        "replacements",
-        "stats",
-        "sounds",
-        "hotkey",
-        "rumps",
-        "sounddevice",
-        "_sounddevice_data",
-        "soundfile",
-        "numpy",
-        "openai",
-        "pyperclip",
-        "dotenv",
-        "Quartz",
-        "AppKit",
-        "Foundation",
-        "objc",
+        "recorder", "transcriber", "cleaner", "injector", "replacements",
+        "stats", "sounds", "hotkey", "overlay", "focus_check",
+        "anti_hallucination", "vad", "settings",
+        "rumps", "sounddevice", "_sounddevice_data", "soundfile",
+        "numpy", "openai", "pyperclip", "dotenv", "webrtcvad",
+        "Quartz", "AppKit", "Foundation", "objc",
     ],
     "packages": [
-        "_sounddevice_data",
-        "_soundfile_data",
-        "faster_whisper",
-        "ctranslate2",
-        "huggingface_hub",
-        "tokenizers",
+        "_sounddevice_data", "_soundfile_data",
+        "faster_whisper", "ctranslate2", "huggingface_hub", "tokenizers",
     ],
+    "excludes": ["pynput"],  # py2app boot always needs multiprocessing.spawn
 }
 
 setup(
