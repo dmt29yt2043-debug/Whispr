@@ -553,8 +553,28 @@ class WhisperDictationApp(rumps.App):
         rumps.quit_application()
 
 
+def _delayed_hide_from_dock():
+    """Call setActivationPolicy(accessory) after rumps creates the menu bar icon.
+
+    Setting it too early (before NSStatusItem is registered) prevents the icon
+    from appearing. Setting it too late (never) leaves the app in the Dock.
+    Solution: wait until rumps has started, then flip the policy on the main
+    thread via AppHelper.callAfter.
+    """
+    import time as _t
+    from AppKit import NSApplication
+    from PyObjCTools import AppHelper
+    _t.sleep(0.8)
+    AppHelper.callAfter(
+        lambda: NSApplication.sharedApplication().setActivationPolicy_(1)
+    )
+
+
 def main():
     app = WhisperDictationApp()
+
+    # Hide from Dock AFTER rumps has created the status item
+    threading.Thread(target=_delayed_hide_from_dock, daemon=True).start()
 
     # Try Fn (CGEventTap on main run loop) if selected
     fn_installed = False
