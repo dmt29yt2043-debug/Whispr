@@ -229,12 +229,18 @@ class _OverlayView(NSView):
 
             # Determine height based on mode
             if self._mode == STATE_RECORDING:
-                # Voice levels; blend current level with neighbor positions
-                # and add a little per-bar variation for visual life
+                # Base level from history (each bar shows a recent moment)
                 base = self._levels[i]
-                # Vary with a subtle sine for pleasant look even during quiet moments
-                variation = 0.08 * math.sin(self._phase * 3 + i * 0.7)
-                lvl = max(0.05, min(1.0, base + variation))
+                # Add strong per-bar modulation so bars "dance" around the voice
+                # Mix two sine waves at different frequencies + phase per bar
+                sine1 = math.sin(self._phase * 4 + i * 0.9)
+                sine2 = math.sin(self._phase * 2.3 + i * 0.42 + 1.1)
+                # Variation amplitude scales with the base level — loud = more dance
+                amp = 0.18 + base * 0.45
+                variation = amp * (0.6 * sine1 + 0.4 * sine2)
+                lvl = base + variation
+                # Exaggerate with a non-linear curve so bars hit the top more often
+                lvl = max(0.08, min(1.0, lvl * 1.25))
             elif self._mode == STATE_PROCESSING:
                 # Two overlapping sine waves for organic motion
                 a = math.sin(self._phase * 2 + i * 0.55)

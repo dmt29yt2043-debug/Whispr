@@ -123,10 +123,18 @@ class Recorder:
         if status:
             pass
         self._frames.append(indata.copy())
-        # Compute RMS level
-        rms = float(np.sqrt(np.mean(indata.astype(np.float32) ** 2)))
-        # Map to 0..1 with sensitivity (log-like curve)
-        level = min(1.0, rms * 8.0)
+
+        # Mix RMS (average energy) + peak (max amplitude) for lively meters.
+        # Peak reacts faster to consonants/transients; RMS tracks overall loudness.
+        arr = indata.astype(np.float32)
+        rms = float(np.sqrt(np.mean(arr ** 2)))
+        peak = float(np.max(np.abs(arr)))
+
+        # Weighted mix, then apply a power curve so quiet speech is visible
+        # but loud speech still has headroom.
+        raw = 0.5 * rms + 0.5 * peak
+        level = min(1.0, (raw * 10.0) ** 0.6)
+
         self._current_level = level
         if self._level_callback:
             try:
