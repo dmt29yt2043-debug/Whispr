@@ -7,6 +7,7 @@ from typing import Optional
 from openai import OpenAI
 
 import settings as S
+import stats as _stats
 
 log = logging.getLogger(__name__)
 
@@ -108,6 +109,18 @@ def clean_text(raw_text: str, bundle_id: Optional[str] = None) -> str:
             max_tokens=2048,
         )
         cleaned = response.choices[0].message.content.strip()
+
+        # Record token usage for cost tracking
+        try:
+            usage = response.usage
+            if usage is not None:
+                _stats.record_gpt_tokens(
+                    input_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
+                    output_tokens=int(getattr(usage, "completion_tokens", 0) or 0),
+                )
+        except Exception:
+            pass
+
         if cleaned:
             log.info("Cleaned (tone=%s): %d -> %d chars", tone, len(raw_text), len(cleaned))
             return cleaned

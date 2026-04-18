@@ -15,9 +15,22 @@ from typing import Optional
 from openai import OpenAI
 
 import settings as S
+import stats as _stats
 from anti_hallucination import filter_transcription
 
 log = logging.getLogger(__name__)
+
+
+def _audio_duration_seconds(path: str) -> float:
+    """Return duration of a WAV file in seconds."""
+    try:
+        import soundfile as _sf
+        info = _sf.info(path)
+        if info.samplerate > 0:
+            return info.frames / info.samplerate
+    except Exception:
+        pass
+    return 0.0
 
 _local_model = None
 
@@ -61,7 +74,12 @@ def _transcribe_api(audio_path: str) -> Optional[str]:
                 model="whisper-1",
                 file=f,
             )
-        return (response.text or "").strip()
+        text = (response.text or "").strip()
+        # Record audio duration (Whisper API is billed per second)
+        duration = _audio_duration_seconds(audio_path)
+        if duration > 0:
+            _stats.record_whisper_seconds(duration)
+        return text
     except Exception as e:
         log.warning("OpenAI API failed: %s", e)
         return None

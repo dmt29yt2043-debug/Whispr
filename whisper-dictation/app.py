@@ -66,7 +66,10 @@ from transcriber import transcribe, warmup_local_model
 from cleaner import clean_text
 from injector import inject_text
 from replacements import apply_replacements, load_replacements, save_replacements
-from stats import record_words, get_words_today, get_words_week, get_words_month
+from stats import (
+    record_words, get_words_today, get_words_week, get_words_month,
+    get_usage_today, get_usage_week, get_usage_month, get_usage_all,
+)
 from sounds import play_start, play_stop
 from hotkey import FnKeyHandler
 from fn_hotkey import FnHotkey
@@ -269,14 +272,36 @@ class WhisperDictationApp(rumps.App):
         rumps.notification(title="Whisper Dictation", subtitle=title, message=message)
 
     def _show_stats(self, _sender=None) -> None:
-        rumps.alert(
-            title="📊 Dictation Statistics",
-            message=(
-                f"Today:       {get_words_today():,} words\n"
-                f"Last 7 days: {get_words_week():,} words\n"
-                f"Last 30 days: {get_words_month():,} words"
-            ),
+        u_today = get_usage_today()
+        u_week = get_usage_week()
+        u_month = get_usage_month()
+        u_all = get_usage_all()
+
+        def _fmt_usage(u):
+            whisper_min = u["whisper_seconds"] / 60.0
+            total_tokens = u["gpt_input_tokens"] + u["gpt_output_tokens"]
+            return (
+                f"    Whisper: {whisper_min:.1f} min\n"
+                f"    GPT:     {total_tokens:,} tokens"
+                f" ({u['gpt_input_tokens']:,} in / {u['gpt_output_tokens']:,} out)\n"
+                f"    💵 ${u['cost_usd']:.4f}"
+            )
+
+        message = (
+            f"📝 Words dictated\n"
+            f"    Today:      {get_words_today():,}\n"
+            f"    Last 7d:    {get_words_week():,}\n"
+            f"    Last 30d:   {get_words_month():,}\n"
+            f"\n"
+            f"☁️ Today:\n{_fmt_usage(u_today)}\n"
+            f"\n"
+            f"☁️ Last 7 days:\n{_fmt_usage(u_week)}\n"
+            f"\n"
+            f"☁️ Last 30 days:\n{_fmt_usage(u_month)}\n"
+            f"\n"
+            f"☁️ All time:\n{_fmt_usage(u_all)}"
         )
+        rumps.alert(title="📊 Dictation Statistics", message=message)
 
     def _show_settings(self, _sender=None) -> None:
         """Show settings dialog — mode, tone, hotkey, toggles."""
