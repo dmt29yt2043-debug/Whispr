@@ -20,14 +20,16 @@ _IS_MAIN_PROC = __name__ in ("__main__", "app")
 
 
 def _set_app_identity():
+    """Set name + icon without touching activation policy.
+
+    When launched via the .app bundle, LSUIElement=true in Info.plist
+    already makes it a menu-bar-only app. Calling setActivationPolicy
+    here too early can prevent rumps' NSStatusItem from registering
+    with the menu bar, resulting in an invisible app.
+    """
     try:
-        from AppKit import (
-            NSBundle, NSImage, NSApplication,
-        )
-        # NSApplicationActivationPolicyAccessory = 1
-        # (menu bar app, no Dock icon, no app switcher entry)
+        from AppKit import NSBundle, NSImage, NSApplication
         app = NSApplication.sharedApplication()
-        app.setActivationPolicy_(1)
 
         # Bundle name / display name (used in alerts)
         bundle = NSBundle.mainBundle()
