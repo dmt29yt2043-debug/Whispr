@@ -25,7 +25,9 @@ DEFAULTS: Dict[str, Any] = {
     "cleanup_enabled": True,           # run GPT cleanup pass
     "base_tone": TONE_NEUTRAL,         # default tone for cleanup
     "app_tones": {},                   # bundle_id -> tone override
-    "force_builtin_mic": True,         # prefer laptop mic over Bluetooth
+    "force_builtin_mic": False,        # use system default input (more reliable
+                                       # when users have working external mics
+                                       # like USB monitors or audio interfaces)
     "vad_enabled": True,               # strip silence before transcription
     "always_english": False,           # translate to English
     "user_style": "",                  # free-form user style hint

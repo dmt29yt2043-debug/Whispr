@@ -261,7 +261,25 @@ class WhisperDictationApp(rumps.App):
         if audio_path is None:
             self._set_title_safe(ICON_IDLE, "🔴 Start Recording")
             self.overlay.hide()
-            log.info("Recording too short, ignored")
+
+            # Recorder short-circuits on silent audio. Show a clear error
+            # and a one-time notification directing the user to fix the
+            # microphone permission.
+            if getattr(self.recorder, "_last_error", None) == "mic_silent":
+                log.warning("Recording was silent — mic permission likely missing")
+                self.overlay.show_error("Check Microphone permission!")
+                if not getattr(self, "_mic_error_shown", False):
+                    self._mic_error_shown = True
+                    rumps.notification(
+                        title="Whisper Dictation",
+                        subtitle="Microphone is silent",
+                        message=(
+                            "Grant mic access: System Settings → "
+                            "Privacy & Security → Microphone → Whisper Dictation."
+                        ),
+                    )
+            else:
+                log.info("Recording too short, ignored")
             return
 
         self._set_title_safe(ICON_PROCESSING)

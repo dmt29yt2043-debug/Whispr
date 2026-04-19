@@ -60,7 +60,7 @@ OPTIONS = {
         "anti_hallucination", "vad", "settings",
         "rumps", "sounddevice", "_sounddevice_data", "soundfile",
         "numpy", "openai", "pyperclip", "dotenv", "webrtcvad",
-        "Quartz", "AppKit", "Foundation", "objc",
+        "Quartz", "AppKit", "Foundation", "objc", "AVFoundation",
     ],
     "packages": [
         "_sounddevice_data", "_soundfile_data",

@@ -51,6 +51,7 @@ class Recorder:
         self._current_level = 0.0  # 0..1 RMS level, for overlay
         self._level_callback = None
         self._last_level_time = 0.0  # throttle callback to ~20 fps max
+        self._last_error = None  # 'mic_silent' | 'mic_denied' | None
 
     @property
     def is_recording(self) -> bool:
@@ -149,18 +150,24 @@ class Recorder:
         if duration < 0.15:
             return None
 
-        # Diagnostic: log mic amplitude so we can tell if the recording was
-        # actually silent (mic muted / wrong device / macOS stole audio).
+        # Check audio amplitude. If the recording is silent, short-circuit
+        # the pipeline — don't waste time/money sending silence to Whisper
+        # (which hallucinates "Thank you very much" / "You" on empty audio).
         try:
             arr = audio.flatten() if audio.ndim > 1 else audio
             peak = float(np.max(np.abs(arr)))
             rms = float(np.sqrt(np.mean(arr.astype(np.float32) ** 2)))
             log.info("Audio captured: %.2fs  peak=%.3f  rms=%.4f", duration, peak, rms)
-            if peak < 0.01:
+            if peak < 0.005:
                 log.warning(
-                    "Very low audio level (peak=%.4f) — mic might be muted "
-                    "or another app captured the microphone.", peak
+                    "SILENT recording (peak=%.4f). Microphone permission "
+                    "likely not granted to Whisper Dictation.app. "
+                    "Check System Settings → Privacy → Microphone.",
+                    peak,
                 )
+                self._last_error = "mic_silent"
+                return None
+            self._last_error = None
         except Exception:
             pass
 
