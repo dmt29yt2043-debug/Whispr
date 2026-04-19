@@ -67,15 +67,18 @@ class Recorder:
         self._persistent_level_callback = cb  # re-attached on each start()
 
     def start(self) -> None:
-        """Start recording audio from the preferred microphone."""
+        """Start recording audio from the preferred microphone.
+
+        Fully serialized: if another start/stop is still running, this
+        waits for it to finish before proceeding.
+        """
         with self._lock:
             if self._recording:
                 return
-            self._frames.clear()
+            self._frames = []  # fresh list — avoid races with stop()'s concat
             self._recording = True
             self._current_level = 0.0
             self._last_level_time = 0.0
-            # Re-attach level callback (stop() detaches it to avoid hangs)
             if hasattr(self, "_persistent_level_callback"):
                 self._level_callback = self._persistent_level_callback
 
@@ -92,19 +95,26 @@ class Recorder:
                 self._stream.start()
             except Exception as e:
                 log.warning("Failed to open device %s, falling back: %s", device, e)
-                # Fall back to default device
-                self._stream = sd.InputStream(
-                    samplerate=SAMPLE_RATE,
-                    channels=CHANNELS,
-                    dtype="float32",
-                    callback=self._audio_callback,
-                )
-                self._stream.start()
+                try:
+                    self._stream = sd.InputStream(
+                        samplerate=SAMPLE_RATE,
+                        channels=CHANNELS,
+                        dtype="float32",
+                        callback=self._audio_callback,
+                    )
+                    self._stream.start()
+                except Exception as e2:
+                    log.error("Default device also failed: %s", e2)
+                    self._stream = None
+                    self._recording = False
+                    raise
 
     def stop(self) -> Optional[str]:
-        """Stop recording and return path to the temp WAV file, or None if too short."""
-        # Detach the level callback FIRST so audio callback stops posting UI updates.
-        # Otherwise stream.stop() can deadlock waiting for pending AppHelper.callAfter's.
+        """Stop recording and return path to the temp WAV file, or None if too short.
+
+        Takes ownership of frames/stream atomically under the lock, then stops
+        the stream OUTSIDE the lock to avoid blocking a concurrent start().
+        """
         self._level_callback = None
 
         with self._lock:
@@ -113,8 +123,12 @@ class Recorder:
             self._recording = False
             stream = self._stream
             self._stream = None
+            # Snapshot the frames list and replace with a new empty one.
+            # This way if a concurrent start() comes in, it gets a fresh list
+            # and won't race with our concat() below.
+            frames = self._frames
+            self._frames = []
 
-        # Stop+close OUTSIDE the lock so audio callback (holds no lock) can finish cleanly
         if stream is not None:
             try:
                 stream.stop()
@@ -122,18 +136,26 @@ class Recorder:
             except Exception as log_err:
                 log.warning("Stream stop error: %s", log_err)
 
-        if not self._frames:
+        if not frames:
             return None
 
-        audio = np.concatenate(self._frames, axis=0)
-        duration = len(audio) / SAMPLE_RATE
+        try:
+            audio = np.concatenate(frames, axis=0)
+        except Exception as e:
+            log.warning("Frame concat failed: %s", e)
+            return None
 
+        duration = len(audio) / SAMPLE_RATE
         if duration < 0.15:
             return None
 
-        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        sf.write(tmp.name, audio, SAMPLE_RATE, subtype="PCM_16")
-        return tmp.name
+        try:
+            tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            sf.write(tmp.name, audio, SAMPLE_RATE, subtype="PCM_16")
+            return tmp.name
+        except Exception as e:
+            log.error("Failed to write WAV: %s", e)
+            return None
 
     def _audio_callback(self, indata: np.ndarray, frames: int, time_info, status) -> None:
         if status:

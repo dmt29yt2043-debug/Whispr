@@ -264,13 +264,16 @@ class FnKeyHandler:
     # ── State machine ────────────────────────────────────────────────
 
     def _on_press(self, now: float) -> None:
-        # Debounce: ignore presses faster than 150ms apart (frustrated
-        # mashing the key would otherwise flood start/stop audio calls).
-        if hasattr(self, "_last_press_time"):
-            since = now - self._last_press_time
-            if since < 0.15:
-                log.debug("Debounced rapid press (%.3fs since last)", since)
-                return
+        # Debounce: ignore presses <200ms after the last press OR release.
+        # Frustrated mashing of the key used to flood start/stop audio calls
+        # and caused stale-thread races that hung the recorder.
+        last_event = max(
+            getattr(self, "_last_press_time", 0.0),
+            getattr(self, "_last_release_time", 0.0),
+        )
+        if last_event and (now - last_event) < 0.20:
+            log.info("Debounced rapid press (%.3fs since last event)", now - last_event)
+            return
         self._last_press_time = now
 
         # Toggle mode: currently recording -> stop
@@ -287,6 +290,8 @@ class FnKeyHandler:
         self._call_safe(self._on_start)
 
     def _on_release(self, now: float, hold: float) -> None:
+        self._last_release_time = now
+
         if self._toggle_mode:
             return
 
@@ -313,5 +318,10 @@ class FnKeyHandler:
             self._last_tap_time = now
 
     def _call_safe(self, fn: Callable) -> None:
-        """Run a callback on a worker thread so the event tap callback returns fast."""
-        threading.Thread(target=fn, daemon=True).start()
+        """Run a callback on a worker thread, logging any exceptions."""
+        def _wrapper():
+            try:
+                fn()
+            except Exception as e:
+                log.error("Worker thread error: %s", e, exc_info=True)
+        threading.Thread(target=_wrapper, daemon=True).start()
