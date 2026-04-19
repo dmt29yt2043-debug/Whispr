@@ -1,13 +1,14 @@
-"""Secondary hotkey: Cmd+Shift+V — re-paste the last transcription.
+"""Secondary hotkeys via CGEventTap:
+  - Cmd+Shift+V — re-paste the last transcription
+  - Escape     — emergency cancel: stop any ongoing recording/processing
 
-Separate CGEventTap listening for keyDown events; triggers when the
-user hits Cmd+Shift+V (in case the main Cmd+V after dictation landed
-in the wrong place).
+Separate CGEventTap listening for keyDown events. Runs on the main
+CFRunLoop alongside the primary hotkey tap.
 """
 
 import logging
 import threading
-from typing import Callable
+from typing import Callable, Optional
 
 from Quartz import (
     CGEventTapCreate,
@@ -30,13 +31,19 @@ log = logging.getLogger(__name__)
 _TAP_DEFAULT = 0
 _kCGKeyboardEventKeycode = 6
 _V_KEYCODE = 9
+_ESCAPE_KEYCODE = 53
 
 
 class RePasteHotkey:
-    """Listens for Cmd+Shift+V; calls on_trigger() when pressed."""
+    """Listens for Cmd+Shift+V (re-paste) and Escape (cancel)."""
 
-    def __init__(self, on_trigger: Callable[[], None]):
+    def __init__(
+        self,
+        on_trigger: Callable[[], None],
+        on_cancel: Optional[Callable[[], None]] = None,
+    ):
         self._on_trigger = on_trigger
+        self._on_cancel = on_cancel
         self._tap = None
         self._source = None
         self._callback_ref = None
@@ -62,27 +69,32 @@ class RePasteHotkey:
 
         self._tap = tap
         self._source = source
-        log.info("Re-paste hotkey installed: Cmd+Shift+V")
+        log.info("Re-paste + cancel hotkeys installed: Cmd+Shift+V / Escape")
         return True
 
     def _event_callback(self, proxy, event_type, event, refcon):
         try:
             keycode = CGEventGetIntegerValueField(event, _kCGKeyboardEventKeycode)
-            if keycode != _V_KEYCODE:
+
+            # Escape — cancel any ongoing recording/processing.
+            # Don't suppress: let the Escape event pass through to the app
+            # the user was working in.
+            if keycode == _ESCAPE_KEYCODE:
+                if self._on_cancel is not None:
+                    threading.Thread(target=self._on_cancel, daemon=True).start()
                 return event
 
-            flags = CGEventGetFlags(event)
-            has_cmd = bool(flags & kCGEventFlagMaskCommand)
-            has_shift = bool(flags & kCGEventFlagMaskShift)
+            if keycode == _V_KEYCODE:
+                flags = CGEventGetFlags(event)
+                has_cmd = bool(flags & kCGEventFlagMaskCommand)
+                has_shift = bool(flags & kCGEventFlagMaskShift)
 
-            if has_cmd and has_shift:
-                log.info("Cmd+Shift+V detected — triggering re-paste")
-                # Run callback on a worker thread to not block the tap
-                threading.Thread(target=self._on_trigger, daemon=True).start()
-                # Suppress the event so no app sees Cmd+Shift+V
-                return None
+                if has_cmd and has_shift:
+                    log.info("Cmd+Shift+V detected — triggering re-paste")
+                    threading.Thread(target=self._on_trigger, daemon=True).start()
+                    return None  # suppress
 
             return event
         except Exception as e:
-            log.error("Re-paste callback error: %s", e)
+            log.error("Hotkey callback error: %s", e)
             return event

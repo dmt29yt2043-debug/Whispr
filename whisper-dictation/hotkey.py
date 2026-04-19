@@ -264,6 +264,15 @@ class FnKeyHandler:
     # ── State machine ────────────────────────────────────────────────
 
     def _on_press(self, now: float) -> None:
+        # Debounce: ignore presses faster than 150ms apart (frustrated
+        # mashing the key would otherwise flood start/stop audio calls).
+        if hasattr(self, "_last_press_time"):
+            since = now - self._last_press_time
+            if since < 0.15:
+                log.debug("Debounced rapid press (%.3fs since last)", since)
+                return
+        self._last_press_time = now
+
         # Toggle mode: currently recording -> stop
         if self._toggle_mode and self._recording:
             self._toggle_mode = False

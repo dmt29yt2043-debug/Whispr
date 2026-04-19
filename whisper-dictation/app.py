@@ -144,8 +144,13 @@ class WhisperDictationApp(rumps.App):
             on_start=self._on_record_start,
             on_stop=self._on_record_stop,
         )
-        # Secondary hotkey — Cmd+Shift+V re-pastes the last transcription
-        self.repaste_hotkey = RePasteHotkey(on_trigger=self._on_repaste)
+        # Secondary hotkeys — Cmd+Shift+V re-pastes, Escape cancels
+        self.repaste_hotkey = RePasteHotkey(
+            on_trigger=self._on_repaste,
+            on_cancel=self._on_cancel,
+        )
+        # Flag used to abort in-flight transcription/cleanup on Escape
+        self._cancel_flag = threading.Event()
 
         self.overlay = StatusOverlay()
         self.recorder.set_level_callback(self.overlay.push_level)
@@ -186,6 +191,43 @@ class WhisperDictationApp(rumps.App):
             self.overlay.show_done("↻ " + _injector.get_last_transcription())
         else:
             self.overlay.show_error("Nothing to re-paste")
+
+    def _on_cancel(self) -> None:
+        """Emergency cancel via Escape — reset all state.
+
+        - Aborts in-flight transcription/cleanup via cancel flag.
+        - Force-stops the recorder (discards audio).
+        - Resets hotkey state machine.
+        - Hides overlay.
+        """
+        log.info("Escape pressed — cancelling all operations")
+        # Signal in-flight processing to bail out after the next API call
+        self._cancel_flag.set()
+
+        # Force-stop recorder, discard any captured frames
+        try:
+            was_recording = self.recorder.is_recording
+            if was_recording:
+                audio_path = self.recorder.stop()
+                if audio_path:
+                    import os as _os
+                    try:
+                        _os.unlink(audio_path)
+                    except OSError:
+                        pass
+        except Exception as e:
+            log.warning("Cancel: recorder stop error: %s", e)
+
+        # Reset hotkey state machine so next press works cleanly
+        try:
+            self.hotkey._key_down = False
+            self.hotkey._recording = False
+            self.hotkey._toggle_mode = False
+        except Exception:
+            pass
+
+        self._set_title_safe(ICON_IDLE, "🔴 Start Recording")
+        self.overlay.hide()
 
     def _set_title_safe(self, title: str, record_item_title: str = None) -> None:
         """Update menu bar title on the main thread (AppKit is not thread-safe)."""
@@ -229,12 +271,28 @@ class WhisperDictationApp(rumps.App):
         threading.Thread(target=self._process_audio, args=(audio_path,), daemon=True).start()
 
     def _process_audio(self, audio_path: str) -> None:
-        """Full pipeline: VAD → transcribe → replace → clean → inject."""
+        """Full pipeline: VAD → transcribe → replace → clean → inject.
+
+        Checks self._cancel_flag at each step so Escape can abort cleanly.
+        """
+        # Reset cancel flag for this run
+        self._cancel_flag.clear()
         temp_files = [audio_path]
+
+        def _was_cancelled() -> bool:
+            if self._cancel_flag.is_set():
+                log.info("Pipeline cancelled via Escape")
+                self._reset_ui()
+                self.overlay.hide()
+                return True
+            return False
+
         try:
             # Step 1: VAD — strip silence
             if S.get("vad_enabled", True):
                 vad_path = vad.strip_silence(audio_path)
+                if _was_cancelled():
+                    return
                 if vad_path is None:
                     log.info("VAD: no speech detected")
                     self.overlay.show_error("No speech detected")
@@ -246,6 +304,8 @@ class WhisperDictationApp(rumps.App):
 
             # Step 2: Transcribe (with anti-hallucination)
             raw_text = transcribe(audio_path)
+            if _was_cancelled():
+                return
             if not raw_text:
                 self.overlay.show_error("No speech detected")
                 self._reset_ui()
@@ -259,6 +319,9 @@ class WhisperDictationApp(rumps.App):
             else:
                 # Step 4: GPT cleanup with per-app tone
                 final_text = clean_text(raw_text, bundle_id=self._recording_bundle_id)
+
+            if _was_cancelled():
+                return
 
             # Step 5: Record stats + remember text for re-paste hotkey
             record_words(final_text)
