@@ -28,8 +28,10 @@ _FRAME_MS = 30
 _SAMPLE_RATE = 16000
 _FRAME_SAMPLES = int(_SAMPLE_RATE * _FRAME_MS / 1000)
 
-# Aggressiveness: 0 (least) to 3 (most aggressive in filtering non-speech)
-_AGGRESSIVENESS = 2
+# Aggressiveness: 0 (least) to 3 (most aggressive in filtering non-speech).
+# Lowered to 1 — 2 was rejecting quiet speech (users speaking softly away from
+# the built-in mic) as "no speech".
+_AGGRESSIVENESS = 1
 
 # Padding around voiced segments (ms)
 _PAD_MS = 200

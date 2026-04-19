@@ -149,6 +149,21 @@ class Recorder:
         if duration < 0.15:
             return None
 
+        # Diagnostic: log mic amplitude so we can tell if the recording was
+        # actually silent (mic muted / wrong device / macOS stole audio).
+        try:
+            arr = audio.flatten() if audio.ndim > 1 else audio
+            peak = float(np.max(np.abs(arr)))
+            rms = float(np.sqrt(np.mean(arr.astype(np.float32) ** 2)))
+            log.info("Audio captured: %.2fs  peak=%.3f  rms=%.4f", duration, peak, rms)
+            if peak < 0.01:
+                log.warning(
+                    "Very low audio level (peak=%.4f) — mic might be muted "
+                    "or another app captured the microphone.", peak
+                )
+        except Exception:
+            pass
+
         try:
             tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
             sf.write(tmp.name, audio, SAMPLE_RATE, subtype="PCM_16")

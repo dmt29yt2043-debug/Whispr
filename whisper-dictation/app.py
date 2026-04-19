@@ -288,17 +288,18 @@ class WhisperDictationApp(rumps.App):
             return False
 
         try:
-            # Step 1: VAD — strip silence
+            # Step 1: VAD — strip silence (best effort; NOT authoritative).
+            # If VAD rejects the audio, still pass the raw recording to
+            # Whisper — VAD can be wrong (quiet voice, distant mic, etc.).
+            # Whisper itself is the authority on whether there's speech.
             if S.get("vad_enabled", True):
                 vad_path = vad.strip_silence(audio_path)
                 if _was_cancelled():
                     return
                 if vad_path is None:
-                    log.info("VAD: no speech detected")
-                    self.overlay.show_error("No speech detected")
-                    self._reset_ui()
-                    return
-                if vad_path != audio_path:
+                    log.info("VAD: no speech detected — falling back to raw audio")
+                    # Continue with raw audio_path; Whisper will decide
+                elif vad_path != audio_path:
                     temp_files.append(vad_path)
                     audio_path = vad_path
 
