@@ -2,7 +2,10 @@
 
 import json
 import os
+import tempfile
+import threading
 import logging
+import copy
 from typing import Dict, Any
 
 log = logging.getLogger(__name__)
@@ -39,6 +42,7 @@ DEFAULTS: Dict[str, Any] = {
 
 
 _cache = None
+_lock = threading.RLock()  # guards _cache + file I/O
 
 
 def _ensure_dir() -> None:
@@ -46,56 +50,86 @@ def _ensure_dir() -> None:
 
 
 def load() -> Dict[str, Any]:
-    """Load settings from disk (cached)."""
-    global _cache
-    if _cache is not None:
-        return _cache
+    """Load settings from disk (cached). Returns a deep copy so callers
+    can't accidentally mutate the cache."""
+    with _lock:
+        if _cache is None:
+            _load_into_cache()
+        # BUG FIX #13: return a deep copy — callers that iterate or
+        # mutate the returned dict won't corrupt the shared cache.
+        return copy.deepcopy(_cache)
 
+
+def _load_into_cache() -> None:
+    global _cache
     if not os.path.exists(_SETTINGS_FILE):
         _cache = dict(DEFAULTS)
-        return _cache
-
+        return
     try:
         with open(_SETTINGS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-        # Merge with defaults so new keys work on upgrade
         merged = dict(DEFAULTS)
         merged.update(data)
         _cache = merged
-        return _cache
     except Exception as e:
         log.error("Failed to load settings: %s — using defaults", e)
         _cache = dict(DEFAULTS)
-        return _cache
 
 
 def save(settings: Dict[str, Any]) -> None:
-    """Save settings and invalidate cache."""
+    """Save settings atomically (tempfile + os.replace) and update cache.
+
+    BUG FIX #12: a crash between `open('w')` truncate and `json.dump`
+    return would leave a 0-byte file. Atomic write avoids that.
+    """
     global _cache
     _ensure_dir()
-    try:
-        with open(_SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(settings, f, ensure_ascii=False, indent=2)
-        _cache = dict(settings)
-        log.info("Settings saved")
-    except Exception as e:
-        log.error("Failed to save settings: %s", e)
+    with _lock:
+        try:
+            dir_ = os.path.dirname(_SETTINGS_FILE)
+            fd, tmp_path = tempfile.mkstemp(prefix=".settings.", suffix=".json", dir=dir_)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(settings, f, ensure_ascii=False, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp_path, _SETTINGS_FILE)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+            _cache = copy.deepcopy(settings)
+            log.info("Settings saved")
+        except Exception as e:
+            log.error("Failed to save settings: %s", e)
 
 
 def get(key: str, default: Any = None) -> Any:
-    """Get a single setting value."""
-    return load().get(key, DEFAULTS.get(key, default))
+    """Get a single setting value (returns a copy for mutable types)."""
+    with _lock:
+        if _cache is None:
+            _load_into_cache()
+        value = _cache.get(key, DEFAULTS.get(key, default))
+        if isinstance(value, (dict, list)):
+            return copy.deepcopy(value)
+        return value
 
 
 def set(key: str, value: Any) -> None:
-    """Set and persist a single value."""
-    s = load()
-    s[key] = value
-    save(s)
+    """Set and persist a single value (atomic read-modify-write)."""
+    with _lock:
+        if _cache is None:
+            _load_into_cache()
+        updated = dict(_cache)
+        updated[key] = value
+        save(updated)
 
 
 def reload() -> None:
     """Force reload from disk."""
     global _cache
-    _cache = None
-    load()
+    with _lock:
+        _cache = None
+        _load_into_cache()

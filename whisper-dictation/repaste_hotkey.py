@@ -35,15 +35,22 @@ _ESCAPE_KEYCODE = 53
 
 
 class RePasteHotkey:
-    """Listens for Cmd+Shift+V (re-paste) and Escape (cancel)."""
+    """Listens for Cmd+Shift+V (re-paste) and Escape (cancel).
+
+    Escape only fires on_cancel when is_active() returns True — otherwise
+    every Escape keystroke (vim, dialog dismissal, etc.) would trigger
+    spurious cancel work on a worker thread.
+    """
 
     def __init__(
         self,
         on_trigger: Callable[[], None],
         on_cancel: Optional[Callable[[], None]] = None,
+        is_active: Optional[Callable[[], bool]] = None,
     ):
         self._on_trigger = on_trigger
         self._on_cancel = on_cancel
+        self._is_active = is_active or (lambda: True)
         self._tap = None
         self._source = None
         self._callback_ref = None
@@ -80,7 +87,10 @@ class RePasteHotkey:
             # Don't suppress: let the Escape event pass through to the app
             # the user was working in.
             if keycode == _ESCAPE_KEYCODE:
-                if self._on_cancel is not None:
+                # Only fire cancel when the app is actually doing
+                # something — otherwise every Escape keystroke (vim,
+                # dialog dismissal) spawns noisy cancel work.
+                if self._on_cancel is not None and self._is_active():
                     threading.Thread(target=self._on_cancel, daemon=True).start()
                 return event
 

@@ -75,6 +75,7 @@ def _transcribe_api(audio_path: str) -> Optional[str]:
     if not client:
         return None
 
+    last_text: Optional[str] = None
     for model_name in (_PRIMARY_MODEL, _FALLBACK_MODEL):
         try:
             with open(audio_path, "rb") as f:
@@ -86,12 +87,19 @@ def _transcribe_api(audio_path: str) -> Optional[str]:
             duration = _audio_duration_seconds(audio_path)
             if duration > 0:
                 _stats.record_whisper_seconds(duration)
-            log.info("Transcribed via %s", model_name)
-            return text
+            log.info("Transcribed via %s (%d chars)", model_name, len(text))
+
+            # BUG FIX #15: empty string from the primary model also
+            # counts as 'no result' — try the fallback before giving up.
+            if text:
+                return text
+            if model_name != _FALLBACK_MODEL:
+                log.info("Primary model returned empty, trying fallback %s", _FALLBACK_MODEL)
+            last_text = text
         except Exception as e:
             log.warning("Transcription via %s failed: %s", model_name, e)
-            # fall through to next model
-    return None
+
+    return last_text  # may be "" if all models returned empty
 
 
 def _transcribe_local(audio_path: str) -> Optional[str]:

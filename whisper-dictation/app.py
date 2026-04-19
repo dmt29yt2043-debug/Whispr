@@ -144,13 +144,19 @@ class WhisperDictationApp(rumps.App):
             on_start=self._on_record_start,
             on_stop=self._on_record_stop,
         )
-        # Secondary hotkeys — Cmd+Shift+V re-pastes, Escape cancels
+        # Flag used to abort in-flight transcription/cleanup on Escape
+        self._cancel_flag = threading.Event()
+        self._processing = False  # True while _process_audio is running
+
+        # Secondary hotkeys — Cmd+Shift+V re-pastes, Escape cancels.
+        # Escape only fires cancel when we're actively recording or
+        # processing — avoids triggering on every Escape keystroke
+        # (bug #19).
         self.repaste_hotkey = RePasteHotkey(
             on_trigger=self._on_repaste,
             on_cancel=self._on_cancel,
+            is_active=lambda: self.recorder.is_recording or self._processing,
         )
-        # Flag used to abort in-flight transcription/cleanup on Escape
-        self._cancel_flag = threading.Event()
 
         self.overlay = StatusOverlay()
         self.recorder.set_level_callback(self.overlay.push_level)
@@ -220,11 +226,9 @@ class WhisperDictationApp(rumps.App):
 
         # Reset hotkey state machine so next press works cleanly
         try:
-            self.hotkey._key_down = False
-            self.hotkey._recording = False
-            self.hotkey._toggle_mode = False
-        except Exception:
-            pass
+            self.hotkey.reset_state()
+        except Exception as e:
+            log.warning("hotkey reset_state failed: %s", e)
 
         self._set_title_safe(ICON_IDLE, "🔴 Start Recording")
         self.overlay.hide()
@@ -293,8 +297,8 @@ class WhisperDictationApp(rumps.App):
 
         Checks self._cancel_flag at each step so Escape can abort cleanly.
         """
-        # Reset cancel flag for this run
         self._cancel_flag.clear()
+        self._processing = True
         temp_files = [audio_path]
 
         def _was_cancelled() -> bool:
@@ -366,6 +370,7 @@ class WhisperDictationApp(rumps.App):
             self.overlay.show_error(str(e)[:40])
             self._reset_ui()
         finally:
+            self._processing = False
             for p in temp_files:
                 try:
                     os.unlink(p)
@@ -373,8 +378,11 @@ class WhisperDictationApp(rumps.App):
                     pass
 
     def _reset_ui(self) -> None:
-        self.title = ICON_IDLE
-        self.record_item.title = "🔴 Start Recording"
+        # BUG FIX #2: route AppKit updates through the main thread.
+        # _reset_ui is called from worker threads (pipeline, cancel) and
+        # setting rumps.App.title / MenuItem.title directly bridges to
+        # NSStatusItem — not thread-safe.
+        self._set_title_safe(ICON_IDLE, "🔴 Start Recording")
 
     # ── Menu handlers ───────────────────────────────────────────────────
 
@@ -579,7 +587,22 @@ class WhisperDictationApp(rumps.App):
         elif key == "mic":
             if value in bool_map:
                 S.set("force_builtin_mic", bool_map[value])
+                # BUG FIX #7: properly stop the old recorder before
+                # replacing (prevents leaked InputStream + orphaned audio
+                # callback thread).
+                try:
+                    if self.recorder.is_recording:
+                        path = self.recorder.stop()
+                        if path:
+                            try:
+                                os.unlink(path)
+                            except OSError:
+                                pass
+                except Exception as e:
+                    log.warning("old recorder stop failed: %s", e)
                 self.recorder = Recorder(force_builtin=bool_map[value])
+                # Re-attach the level callback on the new recorder
+                self.recorder.set_level_callback(self.overlay.push_level)
                 self._notify("Settings", f"Built-in mic: {value}")
         elif key == "vad":
             if value in bool_map:

@@ -274,6 +274,10 @@ class StatusOverlay:
         self._level_history: List[float] = [0.0] * _BAR_COUNT
         self._state = STATE_HIDDEN
         self._hide_thread = None
+        # Epoch counter: every call to show_recording/show_processing
+        # increments it. Pending _delayed_hide threads check the epoch
+        # before hiding — if a newer state has started, they skip.
+        self._epoch = 0
 
     def _ensure_window(self):
         if self._window is not None:
@@ -317,6 +321,7 @@ class StatusOverlay:
         AppHelper.callAfter(_do)
 
     def show_recording(self):
+        self._epoch += 1
         def _do():
             self._ensure_window()
             if not self._window or not self._view:
@@ -330,6 +335,7 @@ class StatusOverlay:
         AppHelper.callAfter(_do)
 
     def show_processing(self):
+        self._epoch += 1
         def _do():
             self._ensure_window()
             if not self._window or not self._view:
@@ -339,6 +345,20 @@ class StatusOverlay:
             self._window.orderFront_(None)
             self._start_animation_timer()
         AppHelper.callAfter(_do)
+
+    def _schedule_hide(self, delay: float) -> None:
+        """BUG FIX #17: schedule a hide tied to the current epoch. If
+        a newer show_* is called before the delay elapses, that show
+        bumps the epoch and the pending hide no-ops."""
+        self._epoch += 1
+        my_epoch = self._epoch
+
+        def _delayed_hide():
+            import time as _t
+            _t.sleep(delay)
+            if self._epoch == my_epoch:
+                self.hide()
+        threading.Thread(target=_delayed_hide, daemon=True).start()
 
     def show_done(self, _text: str = ""):
         def _do():
@@ -350,13 +370,7 @@ class StatusOverlay:
             self._window.orderFront_(None)
             self._stop_animation_timer()
         AppHelper.callAfter(_do)
-
-        def _delayed_hide():
-            import time as _t
-            _t.sleep(1.0)
-            self.hide()
-        self._hide_thread = threading.Thread(target=_delayed_hide, daemon=True)
-        self._hide_thread.start()
+        self._schedule_hide(1.0)
 
     def show_error(self, _message: str = "Error"):
         def _do():
@@ -367,12 +381,7 @@ class StatusOverlay:
             self._view.setMode_(STATE_DONE)
             self._window.orderFront_(None)
         AppHelper.callAfter(_do)
-
-        def _delayed_hide():
-            import time as _t
-            _t.sleep(1.5)
-            self.hide()
-        threading.Thread(target=_delayed_hide, daemon=True).start()
+        self._schedule_hide(1.5)
 
     def hide(self):
         def _do():

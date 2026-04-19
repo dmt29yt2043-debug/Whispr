@@ -116,9 +116,17 @@ class FnKeyHandler:
         self._on_start = on_start
         self._on_stop = on_stop
 
+        # Lock around state-machine fields. CGEventTap callback (main run
+        # loop) and cancel worker thread can both mutate these — without
+        # a lock we saw torn state ('recording=False but _key_down=True'
+        # → next release dropped, key appears dead).
+        self._state_lock = threading.Lock()
+
         self._key_down = False
         self._key_down_time = 0.0
         self._last_tap_time = 0.0
+        self._last_press_time = 0.0
+        self._last_release_time = 0.0
         self._toggle_mode = False
         self._recording = False
 
@@ -140,6 +148,13 @@ class FnKeyHandler:
     def current_key_name(self) -> str:
         return self._key_name
 
+    def reset_state(self) -> None:
+        """Thread-safe reset of the state machine. Called by Escape cancel."""
+        with self._state_lock:
+            self._key_down = False
+            self._recording = False
+            self._toggle_mode = False
+
     def start(self) -> bool:
         """Install the CGEventTap on the main run loop. Returns True on success.
 
@@ -153,23 +168,32 @@ class FnKeyHandler:
         return ok
 
     def _retry_loop(self) -> None:
+        """Poll until the tap is installed, then exit.
+
+        Only schedules a new _install_tap() attempt if a previous attempt
+        has completed and we still have no tap — prevents double install.
+        """
         import time as _t
         from PyObjCTools import AppHelper
+
+        attempt_pending = [False]
+
+        def _try():
+            try:
+                if self._tap is None:
+                    self._install_tap()
+            finally:
+                attempt_pending[0] = False
+
         while True:
             _t.sleep(3)
             if self._tap is not None:
+                log.info("Hotkey tap ready — retry loop exiting")
                 return
-
-            # Try installing on the main thread
-            result = {"ok": False}
-            def _try():
-                result["ok"] = self._install_tap()
+            if attempt_pending[0]:
+                continue  # don't stack calls
+            attempt_pending[0] = True
             AppHelper.callAfter(_try)
-            # Give main thread time to process
-            _t.sleep(0.5)
-            if self._tap is not None:
-                log.info("Hotkey tap installed on retry — Accessibility granted")
-                return
 
     def _install_tap(self) -> bool:
         self._callback_ref = self._event_callback
@@ -264,58 +288,61 @@ class FnKeyHandler:
     # ── State machine ────────────────────────────────────────────────
 
     def _on_press(self, now: float) -> None:
-        # Debounce: ignore presses <200ms after the last press OR release.
-        # Frustrated mashing of the key used to flood start/stop audio calls
-        # and caused stale-thread races that hung the recorder.
-        last_event = max(
-            getattr(self, "_last_press_time", 0.0),
-            getattr(self, "_last_release_time", 0.0),
-        )
-        if last_event and (now - last_event) < 0.20:
-            log.info("Debounced rapid press (%.3fs since last event)", now - last_event)
-            return
-        self._last_press_time = now
+        # Debounce + state update under lock
+        with self._state_lock:
+            last_event = max(self._last_press_time, self._last_release_time)
+            if last_event and (now - last_event) < 0.20:
+                log.info("Debounced rapid press (%.3fs since last event)", now - last_event)
+                return
+            self._last_press_time = now
 
-        # Toggle mode: currently recording -> stop
-        if self._toggle_mode and self._recording:
+            # Toggle mode: currently recording -> stop
+            if self._toggle_mode and self._recording:
+                self._toggle_mode = False
+                self._recording = False
+                log.info("Press -> stop (toggle mode)")
+                self._call_safe(self._on_stop)
+                return
+
+            self._recording = True
             self._toggle_mode = False
-            self._recording = False
-            log.info("Press -> stop (toggle mode)")
-            self._call_safe(self._on_stop)
-            return
 
-        self._recording = True
-        self._toggle_mode = False
         log.info("Press -> start recording")
         self._call_safe(self._on_start)
 
     def _on_release(self, now: float, hold: float) -> None:
-        self._last_release_time = now
+        fire_stop = False
 
-        if self._toggle_mode:
-            return
+        with self._state_lock:
+            self._last_release_time = now
 
-        if not self._recording:
-            self._last_tap_time = now
-            return
+            if self._toggle_mode:
+                return
 
-        if hold < _MIN_HOLD:
-            time_since_last_tap = now - self._last_tap_time
-            if time_since_last_tap < _DOUBLE_TAP_WINDOW:
-                # Double tap -> toggle mode (keep recording)
-                self._toggle_mode = True
-                log.info("Double-tap -> toggle mode ON")
-                self._last_tap_time = 0.0
+            if not self._recording:
+                self._last_tap_time = now
+                return
+
+            if hold < _MIN_HOLD:
+                time_since_last_tap = now - self._last_tap_time
+                if time_since_last_tap < _DOUBLE_TAP_WINDOW:
+                    self._toggle_mode = True
+                    log.info("Double-tap -> toggle mode ON")
+                    self._last_tap_time = 0.0
+                else:
+                    self._recording = False
+                    self._last_tap_time = now
+                    fire_stop = True
+                    stop_reason = "Short tap -> cancel"
             else:
                 self._recording = False
-                log.info("Short tap -> cancel")
-                self._call_safe(self._on_stop)
                 self._last_tap_time = now
-        else:
-            self._recording = False
-            log.info("Release -> stop (hold %.2fs)", hold)
+                fire_stop = True
+                stop_reason = "Release -> stop (hold %.2fs)" % hold
+
+        if fire_stop:
+            log.info(stop_reason)
             self._call_safe(self._on_stop)
-            self._last_tap_time = now
 
     def _call_safe(self, fn: Callable) -> None:
         """Run a callback on a worker thread, logging any exceptions."""

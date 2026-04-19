@@ -98,22 +98,40 @@ def inject_text(
         except Exception as e:
             log.debug("focus check error: %s (allowing paste)", e)
 
-    # Copy text to clipboard
+    # Copy text to clipboard and verify the copy actually succeeded before
+    # firing Cmd+V. Clipboard managers (Alfred, Raycast, Paste.app) can
+    # intercept pyperclip.copy() and 50ms isn't always enough. If the
+    # clipboard doesn't contain our text, wait up to 300ms more.
     pyperclip.copy(text)
-    time.sleep(0.05)
+    deadline = time.time() + 0.30
+    while time.time() < deadline:
+        try:
+            if pyperclip.paste() == text:
+                break
+        except Exception:
+            break
+        time.sleep(0.02)
+    else:
+        log.warning("Clipboard didn't receive our text within 350ms — paste may paste stale content")
 
     if can_paste:
         _press_cmd_v()
         log.info("Injected %d chars into focused app", len(text))
         result = "pasted"
 
-        # Restore previous clipboard after a delay
+        # Restore previous clipboard — but ONLY if the clipboard still
+        # contains the text we just injected. If the user copied something
+        # new during the 0.6s wait, we must not clobber their copy.
         if restore_clipboard and prev_clipboard is not None:
+            injected = text  # capture for closure
             def _restore():
                 time.sleep(0.6)
                 try:
-                    pyperclip.copy(prev_clipboard)
-                    log.debug("Clipboard restored")
+                    if pyperclip.paste() == injected:
+                        pyperclip.copy(prev_clipboard)
+                        log.debug("Clipboard restored")
+                    else:
+                        log.debug("Clipboard was changed by user — skipping restore")
                 except Exception:
                     pass
             threading.Thread(target=_restore, daemon=True).start()

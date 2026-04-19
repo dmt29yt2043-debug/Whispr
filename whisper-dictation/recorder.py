@@ -158,12 +158,15 @@ class Recorder:
             peak = float(np.max(np.abs(arr)))
             rms = float(np.sqrt(np.mean(arr.astype(np.float32) ** 2)))
             log.info("Audio captured: %.2fs  peak=%.3f  rms=%.4f", duration, peak, rms)
-            if peak < 0.005:
+            # BUG FIX #30: only flag as silent/broken mic if the recording
+            # is ABSOLUTELY silent (peak < 0.0005 AND rms ≈ 0). A user
+            # whispering softly can produce peak ≈ 0.003, which earlier
+            # triggered false 'mic muted' errors.
+            if peak < 0.0005 and rms < 0.0001:
                 log.warning(
-                    "SILENT recording (peak=%.4f). Microphone permission "
-                    "likely not granted to Whisper Dictation.app. "
-                    "Check System Settings → Privacy → Microphone.",
-                    peak,
+                    "SILENT recording (peak=%.5f rms=%.5f). Mic permission "
+                    "likely missing. Check System Settings → Privacy → Microphone.",
+                    peak, rms,
                 )
                 self._last_error = "mic_silent"
                 return None
@@ -182,7 +185,16 @@ class Recorder:
     def _audio_callback(self, indata: np.ndarray, frames: int, time_info, status) -> None:
         if status:
             pass
-        self._frames.append(indata.copy())
+        # Hold the lock so we don't append to a frames list that's being
+        # concatenated in stop(), or being cleared by a concurrent start().
+        # Tryacquire (non-blocking) — if we can't get the lock immediately
+        # we drop this audio chunk rather than stall the CoreAudio callback.
+        if not self._lock.acquire(blocking=False):
+            return
+        try:
+            self._frames.append(indata.copy())
+        finally:
+            self._lock.release()
 
         # Mix RMS (average energy) + peak (max amplitude) for lively meters.
         arr = indata.astype(np.float32)
