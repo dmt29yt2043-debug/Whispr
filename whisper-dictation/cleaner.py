@@ -14,7 +14,6 @@ log = logging.getLogger(__name__)
 
 
 # Fast local check: does the text contain common filler/disfluency words?
-# If not, we can skip the expensive GPT call entirely.
 _FILLER_RE = re.compile(
     r"\b("
     r"um|uh|uhm|erm|like|you know|i mean|sort of|kind of|"
@@ -22,6 +21,28 @@ _FILLER_RE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+
+# Sentence-ending punctuation (used to detect unformatted dumps)
+_SENTENCE_END_RE = re.compile(r"[.!?…]")
+
+
+# Skip GPT cleanup for short phrases — filler words rarely appear there
+# and GPT-call latency (~2s) isn't worth it.
+_SHORT_PHRASE_MAX_WORDS = 4
+
+
+def _needs_formatting(text: str) -> bool:
+    """Long speech with no/few sentence breaks needs GPT to add punctuation
+    and paragraph splits — otherwise the user gets a monolithic wall of text."""
+    words = text.split()
+    n_words = len(words)
+    if n_words < 15:
+        return False
+    endings = len(_SENTENCE_END_RE.findall(text))
+    if endings == 0:
+        return True  # no punctuation at all — definitely needs formatting
+    # Average sentence length above ~25 words = likely missing breaks
+    return n_words / endings > 25
 
 
 _TONE_INSTRUCTIONS = {
@@ -35,13 +56,18 @@ _TONE_INSTRUCTIONS = {
 def _build_system_prompt(tone: str, always_english: bool, user_style: str) -> str:
     base = (
         "You are a text cleanup assistant. The user will send you a raw voice "
-        "transcription. Your job is to:\n"
-        "- Remove filler words (um, uh, like, you know, эм, ну, короче, типа, etc.)\n"
-        "- Fix obvious grammar mistakes caused by speech-to-text errors\n"
-        "- Keep the original meaning and language exactly as spoken\n"
-        "- Do NOT rephrase, summarize, or change the style\n"
-        "- Do NOT add punctuation that wasn't implied\n"
-        "- Return ONLY the cleaned text, nothing else"
+        "transcription (often one continuous chunk with no punctuation). "
+        "Your job:\n"
+        "- Add punctuation (periods, commas, question marks, colons) so the text reads naturally.\n"
+        "- Split the text into sentences.\n"
+        "- Insert paragraph breaks (blank lines) when the topic shifts.\n"
+        "- Remove filler words (um, uh, like, you know, эм, ну, короче, типа, etc.).\n"
+        "- Fix obvious grammar mistakes from speech-to-text errors.\n"
+        "- Capitalize the first letter of each sentence.\n"
+        "- Preserve the original meaning AND language (don't translate).\n"
+        "- Do NOT rephrase, summarize, or change the style.\n"
+        "- Do NOT add content the speaker didn't say.\n"
+        "- Return ONLY the cleaned text, nothing else."
     )
 
     tone_instruction = _TONE_INSTRUCTIONS.get(tone, "")
@@ -65,11 +91,6 @@ def _resolve_tone(bundle_id: Optional[str] = None) -> str:
         if bundle_id in app_tones:
             return app_tones[bundle_id]
     return S.get("base_tone", S.TONE_NEUTRAL)
-
-
-# Skip GPT cleanup for short phrases — filler words rarely appear
-# in short dictations and the network round-trip costs ~2s.
-_SHORT_PHRASE_MAX_WORDS = 4
 
 
 def clean_text(raw_text: str, bundle_id: Optional[str] = None) -> str:
@@ -104,18 +125,24 @@ def clean_text(raw_text: str, bundle_id: Optional[str] = None) -> str:
         log.info("Local mode — skipping GPT cleanup, returning raw text")
         return raw_text
 
-    # Skip cleanup for short phrases: saves ~2s of API round-trip,
-    # and short phrases rarely contain filler words worth removing
+    # Skip cleanup for very short phrases ("done", "go back", etc.)
     word_count = len(raw_text.split())
     if word_count <= _SHORT_PHRASE_MAX_WORDS:
         log.info("Short phrase (%d words) — skipping cleanup", word_count)
         return raw_text
 
-    # Fast local check: if no filler words, skip cleanup entirely.
-    # This saves ~2s on clean dictations (most of them).
-    if not _FILLER_RE.search(raw_text):
-        log.info("No filler words detected — skipping cleanup")
+    # Trigger GPT if either:
+    #   - text has filler words to remove, OR
+    #   - text is long and poorly punctuated (needs sentence/paragraph breaks)
+    has_fillers = bool(_FILLER_RE.search(raw_text))
+    needs_format = _needs_formatting(raw_text)
+    if not has_fillers and not needs_format:
+        log.info("Clean + well-formatted text — skipping cleanup")
         return raw_text
+    reasons = []
+    if has_fillers: reasons.append("fillers")
+    if needs_format: reasons.append("needs formatting")
+    log.info("Cleanup triggered: %s (%d words)", ", ".join(reasons), word_count)
 
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
