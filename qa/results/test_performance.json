@@ -6,7 +6,7 @@
       "area": "performance",
       "desc": "10 threads \u00d7 100 stats writes \u2014 latency p95 <50ms",
       "status": "PASS",
-      "ms": 581,
+      "ms": 345,
       "error": null
     },
     {
@@ -14,7 +14,7 @@
       "area": "performance",
       "desc": "20 threads \u00d7 50 settings writes \u2014 no lost writes, fast",
       "status": "PASS",
-      "ms": 629,
+      "ms": 573,
       "error": null
     },
     {
@@ -22,7 +22,7 @@
       "area": "performance",
       "desc": "anti-hallucination filter on 10,000 inputs < 1s",
       "status": "PASS",
-      "ms": 23,
+      "ms": 29,
       "error": null
     }
   ]

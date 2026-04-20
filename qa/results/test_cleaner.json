@@ -22,7 +22,7 @@
       "area": "cleaner",
       "desc": "speech with fillers triggers GPT call",
       "status": "PASS",
-      "ms": 2,
+      "ms": 4,
       "error": null
     },
     {
@@ -30,7 +30,7 @@
       "area": "cleaner",
       "desc": "GPT returns None content \u2192 falls back to raw",
       "status": "PASS",
-      "ms": 0,
+      "ms": 2,
       "error": null
     },
     {
@@ -38,7 +38,7 @@
       "area": "cleaner",
       "desc": "network error \u2192 raw text returned",
       "status": "PASS",
-      "ms": 0,
+      "ms": 1,
       "error": null
     },
     {
@@ -54,7 +54,7 @@
       "area": "cleaner",
       "desc": "mode=local skips GPT entirely",
       "status": "PASS",
-      "ms": 0,
+      "ms": 1,
       "error": null
     },
     {

@@ -38,7 +38,7 @@
       "area": "settings",
       "desc": "50 concurrent set() from 20 threads \u2014 no lost writes",
       "status": "PASS",
-      "ms": 11,
+      "ms": 12,
       "error": null
     },
     {
@@ -46,7 +46,7 @@
       "area": "settings",
       "desc": "settings file never in 0-byte state under concurrent writes",
       "status": "PASS",
-      "ms": 505,
+      "ms": 506,
       "error": null
     }
   ]

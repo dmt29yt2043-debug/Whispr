@@ -80,6 +80,54 @@
         "status": "PASS",
         "ms": 0,
         "error": null
+      },
+      {
+        "id": "TC_SCRIPT_KOREAN_ONLY",
+        "area": "anti_hallucination",
+        "desc": "single Korean glyph ('\uc5b4') rejected as hallucination",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_SCRIPT_CHINESE_ONLY",
+        "area": "anti_hallucination",
+        "desc": "pure Chinese rejected",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_SCRIPT_ARABIC_ONLY",
+        "area": "anti_hallucination",
+        "desc": "pure Arabic rejected",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_SCRIPT_MIXED_STRIP",
+        "area": "anti_hallucination",
+        "desc": "stray Korean glyph in Russian text is stripped, Russian kept",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_SCRIPT_MOSTLY_FOREIGN",
+        "area": "anti_hallucination",
+        "desc": "if majority of chars are foreign script, reject whole",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_SCRIPT_MIXED_RU_EN",
+        "area": "anti_hallucination",
+        "desc": "mixed Russian + English passes through",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
       }
     ],
     "test_cleaner": [
@@ -104,7 +152,7 @@
         "area": "cleaner",
         "desc": "speech with fillers triggers GPT call",
         "status": "PASS",
-        "ms": 2,
+        "ms": 4,
         "error": null
       },
       {
@@ -112,7 +160,7 @@
         "area": "cleaner",
         "desc": "GPT returns None content \u2192 falls back to raw",
         "status": "PASS",
-        "ms": 0,
+        "ms": 2,
         "error": null
       },
       {
@@ -120,7 +168,7 @@
         "area": "cleaner",
         "desc": "network error \u2192 raw text returned",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -136,7 +184,7 @@
         "area": "cleaner",
         "desc": "mode=local skips GPT entirely",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -154,7 +202,7 @@
         "area": "injector",
         "desc": "empty text returns 'skipped', doesn't touch clipboard",
         "status": "PASS",
-        "ms": 54,
+        "ms": 56,
         "error": null
       },
       {
@@ -162,7 +210,7 @@
         "area": "injector",
         "desc": "whitespace-only text returns 'skipped'",
         "status": "PASS",
-        "ms": 104,
+        "ms": 94,
         "error": null
       },
       {
@@ -170,7 +218,7 @@
         "area": "injector",
         "desc": "no text focus \u2192 returns 'copied', clipboard set, no paste",
         "status": "PASS",
-        "ms": 57,
+        "ms": 52,
         "error": null
       },
       {
@@ -178,7 +226,7 @@
         "area": "injector",
         "desc": "text focus \u2192 returns 'pasted', fires Cmd+V",
         "status": "PASS",
-        "ms": 56,
+        "ms": 55,
         "error": null
       },
       {
@@ -194,7 +242,7 @@
         "area": "injector",
         "desc": "clipboard restore: skipped when user changes clipboard during wait",
         "status": "PASS",
-        "ms": 967,
+        "ms": 959,
         "error": null
       },
       {
@@ -202,7 +250,7 @@
         "area": "injector",
         "desc": "clipboard restore: restores when clipboard still ours",
         "status": "PASS",
-        "ms": 960,
+        "ms": 959,
         "error": null
       },
       {
@@ -210,7 +258,7 @@
         "area": "injector",
         "desc": "10 KB text handled without truncation",
         "status": "PASS",
-        "ms": 3,
+        "ms": 1,
         "error": null
       },
       {
@@ -218,7 +266,7 @@
         "area": "injector",
         "desc": "set_last_transcription + repaste_last round-trip",
         "status": "PASS",
-        "ms": 55,
+        "ms": 56,
         "error": null
       },
       {
@@ -236,7 +284,7 @@
         "area": "performance",
         "desc": "10 threads \u00d7 100 stats writes \u2014 latency p95 <50ms",
         "status": "PASS",
-        "ms": 581,
+        "ms": 345,
         "error": null
       },
       {
@@ -244,7 +292,7 @@
         "area": "performance",
         "desc": "20 threads \u00d7 50 settings writes \u2014 no lost writes, fast",
         "status": "PASS",
-        "ms": 629,
+        "ms": 573,
         "error": null
       },
       {
@@ -252,7 +300,7 @@
         "area": "performance",
         "desc": "anti-hallucination filter on 10,000 inputs < 1s",
         "status": "PASS",
-        "ms": 23,
+        "ms": 29,
         "error": null
       }
     ],
@@ -328,7 +376,7 @@
         "area": "security",
         "desc": "SQL injection attempt via model name is parameterized safely",
         "status": "PASS",
-        "ms": 2,
+        "ms": 3,
         "error": null
       },
       {
@@ -418,7 +466,7 @@
         "area": "settings",
         "desc": "50 concurrent set() from 20 threads \u2014 no lost writes",
         "status": "PASS",
-        "ms": 11,
+        "ms": 12,
         "error": null
       },
       {
@@ -426,7 +474,7 @@
         "area": "settings",
         "desc": "settings file never in 0-byte state under concurrent writes",
         "status": "PASS",
-        "ms": 505,
+        "ms": 506,
         "error": null
       }
     ],
@@ -444,7 +492,7 @@
         "area": "stats",
         "desc": "paid_seconds excludes local, local_seconds separated",
         "status": "PASS",
-        "ms": 2,
+        "ms": 1,
         "error": null
       },
       {
@@ -460,7 +508,7 @@
         "area": "stats",
         "desc": "10 threads \u00d7 100 increments \u2014 no lost writes",
         "status": "PASS",
-        "ms": 406,
+        "ms": 366,
         "error": null
       },
       {
@@ -494,7 +542,7 @@
         "area": "vad",
         "desc": "pure silence \u2192 None (no speech)",
         "status": "PASS",
-        "ms": 1,
+        "ms": 2,
         "error": null
       },
       {
@@ -510,7 +558,7 @@
         "area": "vad",
         "desc": "<0.3s audio bypasses VAD, returns original",
         "status": "PASS",
-        "ms": 19,
+        "ms": 30,
         "error": null
       },
       {
@@ -542,7 +590,7 @@
         "area": "recorder",
         "desc": "start/stop serialized via _op_lock; rapid calls do not race",
         "status": "PASS",
-        "ms": 649,
+        "ms": 634,
         "error": null
       },
       {
@@ -550,15 +598,15 @@
         "area": "recorder",
         "desc": "recording <0.15s \u2192 returns None, no orphan WAV",
         "status": "PASS",
-        "ms": 309,
+        "ms": 299,
         "error": null
       }
     ]
   },
   "summary": {
-    "pass": 67,
+    "pass": 73,
     "fail": 0,
     "error": 0,
-    "total": 67
+    "total": 73
   }
 }

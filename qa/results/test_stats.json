@@ -14,7 +14,7 @@
       "area": "stats",
       "desc": "paid_seconds excludes local, local_seconds separated",
       "status": "PASS",
-      "ms": 2,
+      "ms": 1,
       "error": null
     },
     {
@@ -30,7 +30,7 @@
       "area": "stats",
       "desc": "10 threads \u00d7 100 increments \u2014 no lost writes",
       "status": "PASS",
-      "ms": 406,
+      "ms": 366,
       "error": null
     },
     {

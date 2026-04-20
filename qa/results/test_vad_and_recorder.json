@@ -6,7 +6,7 @@
       "area": "vad",
       "desc": "pure silence \u2192 None (no speech)",
       "status": "PASS",
-      "ms": 1,
+      "ms": 2,
       "error": null
     },
     {
@@ -22,7 +22,7 @@
       "area": "vad",
       "desc": "<0.3s audio bypasses VAD, returns original",
       "status": "PASS",
-      "ms": 19,
+      "ms": 30,
       "error": null
     },
     {
@@ -54,7 +54,7 @@
       "area": "recorder",
       "desc": "start/stop serialized via _op_lock; rapid calls do not race",
       "status": "PASS",
-      "ms": 649,
+      "ms": 634,
       "error": null
     },
     {
@@ -62,7 +62,7 @@
       "area": "recorder",
       "desc": "recording <0.15s \u2192 returns None, no orphan WAV",
       "status": "PASS",
-      "ms": 309,
+      "ms": 299,
       "error": null
     }
   ]
