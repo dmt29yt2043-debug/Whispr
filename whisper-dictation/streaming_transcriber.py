@@ -26,7 +26,12 @@ import threading
 import time
 from typing import Optional
 
-import websocket  # websocket-client
+try:
+    import websocket  # websocket-client
+    _WEBSOCKET_AVAILABLE = True
+except ImportError:
+    _WEBSOCKET_AVAILABLE = False
+    websocket = None  # type: ignore
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +56,13 @@ class StreamingTranscriber:
 
     def start(self, sample_rate: int = 16000) -> bool:
         """Open WebSocket + configure transcription session. Returns True on success."""
+        if not _WEBSOCKET_AVAILABLE:
+            log.warning(
+                "websocket-client not installed in this build — "
+                "streaming unavailable, batch will be used"
+            )
+            return False
+
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
             log.warning("No OPENAI_API_KEY — streaming unavailable")
