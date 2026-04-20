@@ -17,6 +17,17 @@ log = logging.getLogger(__name__)
 # Noise markers to strip (bracketed non-speech)
 _BRACKET_NOISE = re.compile(r"\[[^\]]*\]|\([^\)]*\)")
 
+# Very specific synthetic phrases that were in our API prompts historically.
+# No legitimate dictation would contain these verbatim, so we flag them
+# even as a substring — Whisper sometimes echoes the prompt back on
+# silent/garbled audio.
+_PROMPT_ECHO_SNIPPETS = (
+    "english and russian speech",
+    "русская речь. hello world",
+    "привет мир. готово. done",
+    "hello world. привет мир",
+)
+
 # Characters from scripts we don't expect. Whisper sometimes hallucinates
 # a single CJK / Korean / Arabic glyph when the audio is short or unclear
 # ("готово" → "어" was observed). We keep Latin + Cyrillic + common symbols
@@ -70,6 +81,9 @@ _HALLUCINATION_PHRASES = (
     "до скорых встреч",
     "всем пока",
     "до встречи",
+    # Our old vocab-hint prompt — in case any legacy cached .pyc echoes it
+    "english and russian speech",
+    "hello world. привет мир",
 )
 
 
@@ -174,7 +188,15 @@ def filter_transcription(text: str) -> str:
         log.info("Anti-hallucination: text was entirely unsupported script")
         return ""
 
-    # 4. Check for known hallucination phrases
+    # 4. Prompt-echo detection — Whisper sometimes echoes API prompts
+    #    back on silent audio. Match synthetic phrases as substrings.
+    low = cleaned.lower()
+    for snip in _PROMPT_ECHO_SNIPPETS:
+        if snip in low:
+            log.info("Anti-hallucination: prompt-echo detected (%r)", snip)
+            return ""
+
+    # 5. Check for known hallucination phrases
     if _is_phrase_hallucination(cleaned):
         log.info("Anti-hallucination: phrase hallucination detected: %r", cleaned[:60])
         return ""

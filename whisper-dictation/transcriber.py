@@ -75,13 +75,11 @@ def _transcribe_api(audio_path: str) -> Optional[str]:
     if not client:
         return None
 
-    # Bias Whisper toward English + Russian to reduce single-glyph
-    # hallucinations (Korean/Chinese/etc.) on unclear audio.
-    _VOCAB_HINT = (
-        "English and Russian speech. "
-        "Английская и русская речь. "
-        "Hello world. Привет мир. Готово. Done."
-    )
+    # NOTE: we used to pass a Russian+English vocab prompt to bias the
+    # decoder, but on silent/short audio Whisper echoed the prompt back
+    # verbatim into the transcription (classic prompt-injection-back
+    # hallucination). Removed — we rely on the post-transcription
+    # script filter in anti_hallucination.py instead.
 
     last_text: Optional[str] = None
     for model_name in (_PRIMARY_MODEL, _FALLBACK_MODEL):
@@ -90,7 +88,6 @@ def _transcribe_api(audio_path: str) -> Optional[str]:
                 response = client.audio.transcriptions.create(
                     model=model_name,
                     file=f,
-                    prompt=_VOCAB_HINT,
                 )
             text = (response.text or "").strip()
             duration = _audio_duration_seconds(audio_path)
