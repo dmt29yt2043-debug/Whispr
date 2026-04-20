@@ -1,0 +1,69 @@
+{
+  "script": "test_replacements",
+  "results": [
+    {
+      "id": "TC_REPL_EMPTY",
+      "area": "replacements",
+      "desc": "no replacements file \u2192 apply returns text unchanged",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_008",
+      "area": "replacements",
+      "desc": "exact match (lowercased) triggers replacement",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_REPL_NO_MATCH",
+      "area": "replacements",
+      "desc": "non-exact match returns original",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_015",
+      "area": "replacements",
+      "desc": "non-ASCII trigger works",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_035",
+      "area": "replacements",
+      "desc": "value with HTML/script stored + returned verbatim (no exec)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_041",
+      "area": "replacements",
+      "desc": "trigger with path chars stored as data, NOT used as path",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_REPL_PERSIST",
+      "area": "replacements",
+      "desc": "load_replacements reads what save_replacements wrote",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_REPL_CORRUPTED",
+      "area": "replacements",
+      "desc": "corrupted JSON file \u2192 empty dict, no crash",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    }
+  ]
+}

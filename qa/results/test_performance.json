@@ -1,0 +1,29 @@
+{
+  "script": "test_performance",
+  "results": [
+    {
+      "id": "PERF_STATS_10x100",
+      "area": "performance",
+      "desc": "10 threads \u00d7 100 stats writes \u2014 latency p95 <50ms",
+      "status": "PASS",
+      "ms": 581,
+      "error": null
+    },
+    {
+      "id": "PERF_SETTINGS_50x20",
+      "area": "performance",
+      "desc": "20 threads \u00d7 50 settings writes \u2014 no lost writes, fast",
+      "status": "PASS",
+      "ms": 629,
+      "error": null
+    },
+    {
+      "id": "PERF_ANTIHALL_10K",
+      "area": "performance",
+      "desc": "anti-hallucination filter on 10,000 inputs < 1s",
+      "status": "PASS",
+      "ms": 23,
+      "error": null
+    }
+  ]
+}

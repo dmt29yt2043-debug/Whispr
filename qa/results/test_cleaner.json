@@ -1,0 +1,69 @@
+{
+  "script": "test_cleaner",
+  "results": [
+    {
+      "id": "TC_002",
+      "area": "cleaner",
+      "desc": "short phrase (<=4 words) skips GPT",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_003",
+      "area": "cleaner",
+      "desc": "clean speech without fillers skips GPT",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_CLEANER_FILLER_CALLS",
+      "area": "cleaner",
+      "desc": "speech with fillers triggers GPT call",
+      "status": "PASS",
+      "ms": 2,
+      "error": null
+    },
+    {
+      "id": "TC_024",
+      "area": "cleaner",
+      "desc": "GPT returns None content \u2192 falls back to raw",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_033",
+      "area": "cleaner",
+      "desc": "network error \u2192 raw text returned",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_CLEANER_TONE_RAW",
+      "area": "cleaner",
+      "desc": "tone=raw always skips GPT",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_CLEANER_LOCAL_MODE",
+      "area": "cleaner",
+      "desc": "mode=local skips GPT entirely",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_CLEANER_NO_API_KEY",
+      "area": "cleaner",
+      "desc": "no API key \u2192 raw text (no crash)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    }
+  ]
+}

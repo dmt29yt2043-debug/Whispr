@@ -1,0 +1,85 @@
+{
+  "script": "test_anti_hallucination",
+  "results": [
+    {
+      "id": "TC_019",
+      "area": "anti_hallucination",
+      "desc": "phrase 'Thank you very much' \u2192 ''",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_020a",
+      "area": "anti_hallucination",
+      "desc": "'[BLANK_AUDIO]' stripped to ''",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_020b",
+      "area": "anti_hallucination",
+      "desc": "'(Music playing)' stripped to ''",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_020c",
+      "area": "anti_hallucination",
+      "desc": "mixed noise + text \u2192 noise stripped, text kept",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_021a",
+      "area": "anti_hallucination",
+      "desc": "'you you you you' detected as repetition",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_021b",
+      "area": "anti_hallucination",
+      "desc": "'um um um um um um' detected as repetition",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_021c",
+      "area": "anti_hallucination",
+      "desc": "short text is NOT flagged as repetition (<4 words)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_019b",
+      "area": "anti_hallucination",
+      "desc": "Russian '\u0421\u043f\u0430\u0441\u0438\u0431\u043e \u0437\u0430 \u043f\u0440\u043e\u0441\u043c\u043e\u0442\u0440' filtered",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_NOISE_NORMAL",
+      "area": "anti_hallucination",
+      "desc": "clean sentence passes through unchanged",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_NOISE_EMPTY",
+      "area": "anti_hallucination",
+      "desc": "empty string \u2192 empty string",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,564 @@
+{
+  "scripts": {
+    "test_anti_hallucination": [
+      {
+        "id": "TC_019",
+        "area": "anti_hallucination",
+        "desc": "phrase 'Thank you very much' \u2192 ''",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_020a",
+        "area": "anti_hallucination",
+        "desc": "'[BLANK_AUDIO]' stripped to ''",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_020b",
+        "area": "anti_hallucination",
+        "desc": "'(Music playing)' stripped to ''",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_020c",
+        "area": "anti_hallucination",
+        "desc": "mixed noise + text \u2192 noise stripped, text kept",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_021a",
+        "area": "anti_hallucination",
+        "desc": "'you you you you' detected as repetition",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_021b",
+        "area": "anti_hallucination",
+        "desc": "'um um um um um um' detected as repetition",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_021c",
+        "area": "anti_hallucination",
+        "desc": "short text is NOT flagged as repetition (<4 words)",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_019b",
+        "area": "anti_hallucination",
+        "desc": "Russian '\u0421\u043f\u0430\u0441\u0438\u0431\u043e \u0437\u0430 \u043f\u0440\u043e\u0441\u043c\u043e\u0442\u0440' filtered",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_NOISE_NORMAL",
+        "area": "anti_hallucination",
+        "desc": "clean sentence passes through unchanged",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_NOISE_EMPTY",
+        "area": "anti_hallucination",
+        "desc": "empty string \u2192 empty string",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      }
+    ],
+    "test_cleaner": [
+      {
+        "id": "TC_002",
+        "area": "cleaner",
+        "desc": "short phrase (<=4 words) skips GPT",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_003",
+        "area": "cleaner",
+        "desc": "clean speech without fillers skips GPT",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_CLEANER_FILLER_CALLS",
+        "area": "cleaner",
+        "desc": "speech with fillers triggers GPT call",
+        "status": "PASS",
+        "ms": 2,
+        "error": null
+      },
+      {
+        "id": "TC_024",
+        "area": "cleaner",
+        "desc": "GPT returns None content \u2192 falls back to raw",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_033",
+        "area": "cleaner",
+        "desc": "network error \u2192 raw text returned",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_CLEANER_TONE_RAW",
+        "area": "cleaner",
+        "desc": "tone=raw always skips GPT",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_CLEANER_LOCAL_MODE",
+        "area": "cleaner",
+        "desc": "mode=local skips GPT entirely",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_CLEANER_NO_API_KEY",
+        "area": "cleaner",
+        "desc": "no API key \u2192 raw text (no crash)",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      }
+    ],
+    "test_injector": [
+      {
+        "id": "TC_032",
+        "area": "injector",
+        "desc": "empty text returns 'skipped', doesn't touch clipboard",
+        "status": "PASS",
+        "ms": 54,
+        "error": null
+      },
+      {
+        "id": "TC_032b",
+        "area": "injector",
+        "desc": "whitespace-only text returns 'skipped'",
+        "status": "PASS",
+        "ms": 104,
+        "error": null
+      },
+      {
+        "id": "TC_022",
+        "area": "injector",
+        "desc": "no text focus \u2192 returns 'copied', clipboard set, no paste",
+        "status": "PASS",
+        "ms": 57,
+        "error": null
+      },
+      {
+        "id": "TC_INJ_HAS_FOCUS",
+        "area": "injector",
+        "desc": "text focus \u2192 returns 'pasted', fires Cmd+V",
+        "status": "PASS",
+        "ms": 56,
+        "error": null
+      },
+      {
+        "id": "TC_023",
+        "area": "injector",
+        "desc": "clipboard verification: waits for clipboard to settle before paste",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_029",
+        "area": "injector",
+        "desc": "clipboard restore: skipped when user changes clipboard during wait",
+        "status": "PASS",
+        "ms": 967,
+        "error": null
+      },
+      {
+        "id": "TC_INJ_RESTORE_HAPPY",
+        "area": "injector",
+        "desc": "clipboard restore: restores when clipboard still ours",
+        "status": "PASS",
+        "ms": 960,
+        "error": null
+      },
+      {
+        "id": "TC_036",
+        "area": "injector",
+        "desc": "10 KB text handled without truncation",
+        "status": "PASS",
+        "ms": 3,
+        "error": null
+      },
+      {
+        "id": "TC_INJ_SET_LAST",
+        "area": "injector",
+        "desc": "set_last_transcription + repaste_last round-trip",
+        "status": "PASS",
+        "ms": 55,
+        "error": null
+      },
+      {
+        "id": "TC_INJ_REPASTE_EMPTY",
+        "area": "injector",
+        "desc": "repaste_last with no history returns False",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      }
+    ],
+    "test_performance": [
+      {
+        "id": "PERF_STATS_10x100",
+        "area": "performance",
+        "desc": "10 threads \u00d7 100 stats writes \u2014 latency p95 <50ms",
+        "status": "PASS",
+        "ms": 581,
+        "error": null
+      },
+      {
+        "id": "PERF_SETTINGS_50x20",
+        "area": "performance",
+        "desc": "20 threads \u00d7 50 settings writes \u2014 no lost writes, fast",
+        "status": "PASS",
+        "ms": 629,
+        "error": null
+      },
+      {
+        "id": "PERF_ANTIHALL_10K",
+        "area": "performance",
+        "desc": "anti-hallucination filter on 10,000 inputs < 1s",
+        "status": "PASS",
+        "ms": 23,
+        "error": null
+      }
+    ],
+    "test_replacements": [
+      {
+        "id": "TC_REPL_EMPTY",
+        "area": "replacements",
+        "desc": "no replacements file \u2192 apply returns text unchanged",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_008",
+        "area": "replacements",
+        "desc": "exact match (lowercased) triggers replacement",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_REPL_NO_MATCH",
+        "area": "replacements",
+        "desc": "non-exact match returns original",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_015",
+        "area": "replacements",
+        "desc": "non-ASCII trigger works",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_035",
+        "area": "replacements",
+        "desc": "value with HTML/script stored + returned verbatim (no exec)",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_041",
+        "area": "replacements",
+        "desc": "trigger with path chars stored as data, NOT used as path",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_REPL_PERSIST",
+        "area": "replacements",
+        "desc": "load_replacements reads what save_replacements wrote",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_REPL_CORRUPTED",
+        "area": "replacements",
+        "desc": "corrupted JSON file \u2192 empty dict, no crash",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      }
+    ],
+    "test_security": [
+      {
+        "id": "TC_042",
+        "area": "security",
+        "desc": "SQL injection attempt via model name is parameterized safely",
+        "status": "PASS",
+        "ms": 2,
+        "error": null
+      },
+      {
+        "id": "TC_043",
+        "area": "security",
+        "desc": "afplay fallback uses subprocess, no shell interpolation",
+        "status": "PASS",
+        "ms": 1,
+        "error": null
+      },
+      {
+        "id": "TC_035",
+        "area": "security",
+        "desc": "replacement value with HTML/script stored unchanged, no exec",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_041",
+        "area": "security",
+        "desc": "replacements stored inside config dir only; traversal keys = just data",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_SEC_API_KEY_NOT_IN_ERROR",
+        "area": "security",
+        "desc": "generic_error_message doesn't leak key-like strings",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_SEC_LOG_PATH_SAFE",
+        "area": "security",
+        "desc": "log file path is under user home, not world-writable",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_SEC_SETTINGS_PERMS",
+        "area": "security",
+        "desc": "settings.json is not group/world-writable",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      }
+    ],
+    "test_settings": [
+      {
+        "id": "TC_017",
+        "area": "settings",
+        "desc": "missing file \u2192 defaults used, no file created until set()",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_016",
+        "area": "settings",
+        "desc": "corrupted JSON \u2192 defaults, no crash",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_SET_PERSIST",
+        "area": "settings",
+        "desc": "set() persists across reload()",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_SET_DEEPCOPY",
+        "area": "settings",
+        "desc": "get() returns deep copy of dict values",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_028",
+        "area": "settings",
+        "desc": "50 concurrent set() from 20 threads \u2014 no lost writes",
+        "status": "PASS",
+        "ms": 11,
+        "error": null
+      },
+      {
+        "id": "TC_ATOMIC",
+        "area": "settings",
+        "desc": "settings file never in 0-byte state under concurrent writes",
+        "status": "PASS",
+        "ms": 505,
+        "error": null
+      }
+    ],
+    "test_stats": [
+      {
+        "id": "TC_STATS_RECORD",
+        "area": "stats",
+        "desc": "record_transcribe increments by_model correctly",
+        "status": "PASS",
+        "ms": 3,
+        "error": null
+      },
+      {
+        "id": "TC_044",
+        "area": "stats",
+        "desc": "paid_seconds excludes local, local_seconds separated",
+        "status": "PASS",
+        "ms": 2,
+        "error": null
+      },
+      {
+        "id": "TC_STATS_TOKENS",
+        "area": "stats",
+        "desc": "GPT token cost computed correctly",
+        "status": "PASS",
+        "ms": 1,
+        "error": null
+      },
+      {
+        "id": "TC_027",
+        "area": "stats",
+        "desc": "10 threads \u00d7 100 increments \u2014 no lost writes",
+        "status": "PASS",
+        "ms": 406,
+        "error": null
+      },
+      {
+        "id": "TC_042",
+        "area": "stats",
+        "desc": "SQL-injection-like model name handled via parameterized query",
+        "status": "PASS",
+        "ms": 1,
+        "error": null
+      },
+      {
+        "id": "TC_STATS_WORD_COUNT",
+        "area": "stats",
+        "desc": "word count increments across dictations",
+        "status": "PASS",
+        "ms": 1,
+        "error": null
+      },
+      {
+        "id": "TC_STATS_EMPTY_NO_RECORD",
+        "area": "stats",
+        "desc": "empty text/zero seconds doesn't add rows",
+        "status": "PASS",
+        "ms": 1,
+        "error": null
+      }
+    ],
+    "test_vad_and_recorder": [
+      {
+        "id": "TC_VAD_SILENT",
+        "area": "vad",
+        "desc": "pure silence \u2192 None (no speech)",
+        "status": "PASS",
+        "ms": 1,
+        "error": null
+      },
+      {
+        "id": "TC_VAD_TONE",
+        "area": "vad",
+        "desc": "tone + silence \u2192 returns trimmed WAV",
+        "status": "PASS",
+        "ms": 1,
+        "error": null
+      },
+      {
+        "id": "TC_VAD_TOO_SHORT",
+        "area": "vad",
+        "desc": "<0.3s audio bypasses VAD, returns original",
+        "status": "PASS",
+        "ms": 19,
+        "error": null
+      },
+      {
+        "id": "TC_030",
+        "area": "vad",
+        "desc": "VAD failure on silent audio \u2192 None (pipeline will use raw)",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_REC_BUILTIN_KEYWORDS",
+        "area": "recorder",
+        "desc": "_find_builtin_mic_index matches MacBook Air Microphone",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_REC_BUILTIN_NOT_FOUND",
+        "area": "recorder",
+        "desc": "when no built-in mic \u2192 returns None (use default)",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_REC_SERIALIZED",
+        "area": "recorder",
+        "desc": "start/stop serialized via _op_lock; rapid calls do not race",
+        "status": "PASS",
+        "ms": 649,
+        "error": null
+      },
+      {
+        "id": "TC_011",
+        "area": "recorder",
+        "desc": "recording <0.15s \u2192 returns None, no orphan WAV",
+        "status": "PASS",
+        "ms": 309,
+        "error": null
+      }
+    ]
+  },
+  "summary": {
+    "pass": 67,
+    "fail": 0,
+    "error": 0,
+    "total": 67
+  }
+}

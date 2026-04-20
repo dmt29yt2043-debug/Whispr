@@ -1,0 +1,53 @@
+{
+  "script": "test_settings",
+  "results": [
+    {
+      "id": "TC_017",
+      "area": "settings",
+      "desc": "missing file \u2192 defaults used, no file created until set()",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_016",
+      "area": "settings",
+      "desc": "corrupted JSON \u2192 defaults, no crash",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_SET_PERSIST",
+      "area": "settings",
+      "desc": "set() persists across reload()",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_SET_DEEPCOPY",
+      "area": "settings",
+      "desc": "get() returns deep copy of dict values",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_028",
+      "area": "settings",
+      "desc": "50 concurrent set() from 20 threads \u2014 no lost writes",
+      "status": "PASS",
+      "ms": 11,
+      "error": null
+    },
+    {
+      "id": "TC_ATOMIC",
+      "area": "settings",
+      "desc": "settings file never in 0-byte state under concurrent writes",
+      "status": "PASS",
+      "ms": 505,
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,239 @@
+{
+  "product": "WhisperFlow (Whisper Dictation macOS menu bar app)",
+  "scope_notes": "Local macOS app. No server, no multi-user, no auth, no file upload, no export-to-file. 'Export' = paste to focused app via Cmd+V. History = last transcription in memory (re-paste via Cmd+Shift+V) + per-day word counts and API usage in SQLite.",
+  "skipped_categories_with_reason": {
+    "upload_audio": "Product is mic-only",
+    "cross_user_access": "Single-user app, no auth",
+    "session_expiry": "No sessions",
+    "server_injection": "No server",
+    "export_file": "No file export; paste is the export path"
+  },
+
+  "test_cases": [
+
+    {"id": "TC_001", "type": "happy", "area": "recording",
+     "preconditions": {"app_running": true, "accessibility_granted": true, "mic_granted": true},
+     "steps": ["Hold hotkey (Fn) >=0.5s", "Speak 'hello world'", "Release hotkey"],
+     "expected_behavior": ["Recording started log", "Audio captured with peak>0.01", "Transcription produced", "Text pasted to focused app"]},
+
+    {"id": "TC_002", "type": "happy", "area": "cleanup",
+     "preconditions": {"mode": "auto", "cleanup_enabled": true},
+     "steps": ["Dictate short phrase (<=4 words), e.g. 'make a commit'"],
+     "expected_behavior": ["Log shows 'Short phrase — skipping cleanup'", "No GPT API call", "Raw text pasted"]},
+
+    {"id": "TC_003", "type": "happy", "area": "cleanup",
+     "preconditions": {"mode": "auto"},
+     "steps": ["Dictate clean speech (no filler words) 10+ words"],
+     "expected_behavior": ["Log shows 'No filler words detected — skipping cleanup'", "Transcription pasted unchanged"]},
+
+    {"id": "TC_004", "type": "happy", "area": "cleanup",
+     "preconditions": {"mode": "auto", "cleanup_enabled": true, "tone": "neutral"},
+     "steps": ["Dictate speech with fillers: 'ну короче типа сделай это'"],
+     "expected_behavior": ["GPT call is made", "Cleaned text removes fillers", "Cleaned version pasted"]},
+
+    {"id": "TC_005", "type": "happy", "area": "hotkey",
+     "preconditions": {"hotkey": "fn"},
+     "steps": ["Double-tap Fn quickly", "Speak a sentence hands-free", "Press Fn once to stop"],
+     "expected_behavior": ["Toggle-mode entered log", "Recording continues after release", "Single press stops recording"]},
+
+    {"id": "TC_006", "type": "happy", "area": "repaste",
+     "preconditions": {"last_transcription_exists": true},
+     "steps": ["Dictate a phrase and let it paste", "Move cursor elsewhere", "Press Cmd+Shift+V"],
+     "expected_behavior": ["Last transcription re-pasted at new cursor location"]},
+
+    {"id": "TC_007", "type": "happy", "area": "cancel",
+     "preconditions": {"recording_in_progress": true},
+     "steps": ["Start long recording (5s+)", "While processing, press Escape"],
+     "expected_behavior": ["Pipeline cancelled", "Overlay hidden", "No text pasted", "Menu bar title reset to IDLE"]},
+
+    {"id": "TC_008", "type": "happy", "area": "replacements",
+     "preconditions": {"replacement_exists": {"my zoom": "https://zoom.us/j/123"}},
+     "steps": ["Dictate exactly 'my zoom'"],
+     "expected_behavior": ["Replacement applied BEFORE cleanup", "URL pasted", "No GPT call made"]},
+
+    {"id": "TC_009", "type": "happy", "area": "stats",
+     "preconditions": {"prior_dictations": 5},
+     "steps": ["Open menu → Statistics"],
+     "expected_behavior": ["Today count reflects recent dictations", "by_model breakdown shows gpt-4o-mini-transcribe row", "Total cost matches calls × price"]},
+
+    {"id": "TC_010", "type": "happy", "area": "settings",
+     "preconditions": {},
+     "steps": ["Open Settings → More → type 'mode local'", "Quit app", "Relaunch"],
+     "expected_behavior": ["Settings persist across restart", "Mode still = local"]},
+
+    {"id": "TC_011", "type": "edge", "area": "recording",
+     "preconditions": {},
+     "steps": ["Tap Fn for <150ms"],
+     "expected_behavior": ["Debounced or marked 'too short'", "No pipeline invocation", "No orphan temp file"]},
+
+    {"id": "TC_012", "type": "edge", "area": "transcription",
+     "preconditions": {"mode": "cloud"},
+     "steps": ["Hold Fn for 60+ seconds, continuous speech"],
+     "expected_behavior": ["Audio fully captured", "VAD strips trailing silence", "Full text returned and pasted", "Stats records actual duration"]},
+
+    {"id": "TC_013", "type": "edge", "area": "mic",
+     "preconditions": {"mic_permission_denied": true},
+     "steps": ["Attempt dictation"],
+     "expected_behavior": ["peak/rms near zero detected", "Pipeline short-circuits (no Whisper call)", "User-facing error about mic permission", "No hallucinations pasted"]},
+
+    {"id": "TC_014", "type": "edge", "area": "transcription",
+     "preconditions": {},
+     "steps": ["Dictate mixed Russian+English 'откройте my github repo please'"],
+     "expected_behavior": ["Transcription preserves both languages", "GPT cleanup does not translate"]},
+
+    {"id": "TC_015", "type": "edge", "area": "replacements",
+     "preconditions": {},
+     "steps": ["Add replacement with non-ASCII trigger 'мой зум' → URL", "Dictate exactly 'мой зум'"],
+     "expected_behavior": ["Matches case-insensitively", "Replacement applied"]},
+
+    {"id": "TC_016", "type": "edge", "area": "settings",
+     "preconditions": {"settings_file_corrupted": true},
+     "steps": ["Write invalid JSON to settings file", "Call settings.load()"],
+     "expected_behavior": ["Defaults loaded", "Error logged, no crash", "Subsequent .set() recovers the file"]},
+
+    {"id": "TC_017", "type": "edge", "area": "settings",
+     "preconditions": {"settings_file_missing": true},
+     "steps": ["Delete settings.json", "Call settings.get('mode')"],
+     "expected_behavior": ["Default returned (auto)", "No crash", "File NOT created until .set() called"]},
+
+    {"id": "TC_018", "type": "edge", "area": "settings",
+     "preconditions": {},
+     "steps": ["Fire 50 concurrent settings.set() from 20 threads"],
+     "expected_behavior": ["No lost writes", "settings.json remains valid JSON", "No 0-byte file states"]},
+
+    {"id": "TC_019", "type": "edge", "area": "anti_hallucination",
+     "preconditions": {},
+     "steps": ["Feed 'Thank you very much.' to filter_transcription"],
+     "expected_behavior": ["Returns empty string (phrase hallucination)"]},
+
+    {"id": "TC_020", "type": "edge", "area": "anti_hallucination",
+     "preconditions": {},
+     "steps": ["Feed '[BLANK_AUDIO]' and '(Music playing)' to filter"],
+     "expected_behavior": ["Both stripped; returns empty"]},
+
+    {"id": "TC_021", "type": "edge", "area": "anti_hallucination",
+     "preconditions": {},
+     "steps": ["Feed 'you you you you you you you' to filter"],
+     "expected_behavior": ["Detected as repetition hallucination", "Returns empty"]},
+
+    {"id": "TC_022", "type": "edge", "area": "injector",
+     "preconditions": {"frontmost_app": "Finder (no text focus)"},
+     "steps": ["Dictate a phrase"],
+     "expected_behavior": ["inject_text returns 'copied' (not 'pasted')", "Clipboard contains transcription", "No Cmd+V fired into Finder"]},
+
+    {"id": "TC_023", "type": "edge", "area": "injector",
+     "preconditions": {"clipboard_manager_active": true},
+     "steps": ["Dictate; clipboard manager intercepts copy"],
+     "expected_behavior": ["inject_text waits up to 350ms for clipboard to settle", "Cmd+V pastes OUR text, not stale clipboard"]},
+
+    {"id": "TC_024", "type": "edge", "area": "cleaner",
+     "preconditions": {"GPT returns None content (content filter)"},
+     "steps": ["Mock OpenAI to return choice with content=None"],
+     "expected_behavior": ["Falls back to raw text, does not crash"]},
+
+    {"id": "TC_025", "type": "edge", "area": "transcription",
+     "preconditions": {"primary_model_returns_empty": true},
+     "steps": ["Mock gpt-4o-mini-transcribe to return ''; whisper-1 returns 'hello'"],
+     "expected_behavior": ["Fallback chain triggers", "Final text = 'hello'"]},
+
+    {"id": "TC_026", "type": "stress", "area": "hotkey",
+     "preconditions": {},
+     "steps": ["Mash Fn press/release 20 times in 2s"],
+     "expected_behavior": ["Debounce drops most events (>=150ms apart)", "No hung recorder state", "No stream leaks", "Recording indicator returns to idle within 2s"]},
+
+    {"id": "TC_027", "type": "stress", "area": "stats",
+     "preconditions": {},
+     "steps": ["Call record_transcribe and record_gpt_tokens from 10 threads, 100 iterations"],
+     "expected_behavior": ["All increments accounted for (sum matches expected)", "No SQLite locking errors", "DB file remains valid"]},
+
+    {"id": "TC_028", "type": "stress", "area": "settings",
+     "preconditions": {},
+     "steps": ["50 concurrent set() calls with different keys from 20 threads"],
+     "expected_behavior": ["All 50 keys present in final JSON", "No partial writes / corruption"]},
+
+    {"id": "TC_029", "type": "negative", "area": "injector",
+     "preconditions": {"restore_clipboard": true, "prev_clipboard": "A"},
+     "steps": ["Start injection of 'B'", "User copies 'C' manually during restore window"],
+     "expected_behavior": ["Clipboard check sees 'C', NOT our 'B' → restore SKIPPED", "User's 'C' preserved"]},
+
+    {"id": "TC_030", "type": "negative", "area": "vad",
+     "preconditions": {},
+     "steps": ["VAD receives audio with quiet speech", "VAD returns None ('no speech')"],
+     "expected_behavior": ["Pipeline falls back to RAW audio_path, not aborts", "Whisper still gets a chance to transcribe"]},
+
+    {"id": "TC_031", "type": "negative", "area": "recorder",
+     "preconditions": {"recording_in_progress": true},
+     "steps": ["User changes force_builtin_mic while recording"],
+     "expected_behavior": ["Old recorder stopped and its temp file cleaned", "New recorder has level callback re-attached", "No stream leak in /var/folders"]},
+
+    {"id": "TC_032", "type": "negative", "area": "injector",
+     "preconditions": {},
+     "steps": ["inject_text called with '' or whitespace only"],
+     "expected_behavior": ["Returns 'skipped'", "No clipboard write", "No Cmd+V fired"]},
+
+    {"id": "TC_033", "type": "negative", "area": "cleaner",
+     "preconditions": {"network_down": true},
+     "steps": ["Dictate text with fillers", "OpenAI API throws ConnectionError"],
+     "expected_behavior": ["Exception caught", "Raw transcription pasted as-is"]},
+
+    {"id": "TC_034", "type": "negative", "area": "transcriber",
+     "preconditions": {"OPENAI_API_KEY": "unset", "mode": "auto"},
+     "steps": ["Dictate"],
+     "expected_behavior": ["Cloud path skipped", "Local faster-whisper used", "Stats record local-faster-whisper, cost = 0"]},
+
+    {"id": "TC_035", "type": "negative", "area": "replacements",
+     "preconditions": {},
+     "steps": ["Add replacement with '</script><img>' in value", "Trigger it"],
+     "expected_behavior": ["Value stored verbatim", "Pasted verbatim into target app (target is responsible for its own escaping)", "No execution in our app"]},
+
+    {"id": "TC_036", "type": "negative", "area": "injector",
+     "preconditions": {},
+     "steps": ["inject_text with 10,000-character string"],
+     "expected_behavior": ["Clipboard receives full text", "Cmd+V pastes full text (no truncation)"]},
+
+    {"id": "TC_037", "type": "negative", "area": "cancel",
+     "preconditions": {},
+     "steps": ["Start dictation", "Press Escape mid-Whisper-call", "Wait 10s"],
+     "expected_behavior": ["Pipeline bails at next check", "No zombie thread", "No text pasted", "_processing flag returns to False"]},
+
+    {"id": "TC_038", "type": "negative", "area": "focus_check",
+     "preconditions": {"frontmost_app": "Beachballed (stuck AX)"},
+     "steps": ["Attempt inject_text"],
+     "expected_behavior": ["AX query times out after 500ms", "Fails OPEN (paste attempted)", "Pipeline does not hang indefinitely"]},
+
+    {"id": "TC_039", "type": "negative", "area": "recorder",
+     "preconditions": {"force_builtin_mic": true, "builtin_mic_dead": true},
+     "steps": ["Start recording"],
+     "expected_behavior": ["Exception not raised to user", "Either fallback to default device OR silent-audio short-circuit triggers"]},
+
+    {"id": "TC_040", "type": "negative", "area": "hotkey",
+     "preconditions": {},
+     "steps": ["Inject an exception into CGEventTap callback (monkey-patch)", "Press hotkey again"],
+     "expected_behavior": ["State machine _key_down reset after exception", "Next press works normally"]},
+
+    {"id": "TC_041", "type": "security", "area": "replacements",
+     "preconditions": {},
+     "steps": ["Try to create replacement where trigger = '../../../etc/passwd'"],
+     "expected_behavior": ["No file operation — replacements are dict keys, not filenames", "Stored as data"]},
+
+    {"id": "TC_042", "type": "security", "area": "stats",
+     "preconditions": {},
+     "steps": ["record_transcribe(model=\"'; DROP TABLE usage; --\", 10)"],
+     "expected_behavior": ["Parameterized query stores the string as-is", "No SQL execution", "Table intact"]},
+
+    {"id": "TC_043", "type": "security", "area": "sounds",
+     "preconditions": {"TMPDIR": "/tmp/' with \"quotes\"/"},
+     "steps": ["Trigger fallback afplay path"],
+     "expected_behavior": ["subprocess.Popen with arg list — no shell interpolation", "No code execution via path quoting"]},
+
+    {"id": "TC_044", "type": "happy", "area": "stats",
+     "preconditions": {},
+     "steps": ["Dictate in cloud mode, then in local mode"],
+     "expected_behavior": ["by_model shows both gpt-4o-mini-transcribe and local-faster-whisper rows", "local row has cost_usd = 0", "Total cost only counts paid"]},
+
+    {"id": "TC_045", "type": "edge", "area": "overlay",
+     "preconditions": {},
+     "steps": ["Start recording, quickly release, start new recording within 0.5s"],
+     "expected_behavior": ["First overlay's delayed-hide does NOT hide the second recording's overlay (epoch check)"]}
+  ]
+}

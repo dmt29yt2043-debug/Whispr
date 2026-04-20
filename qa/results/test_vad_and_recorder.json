@@ -1,0 +1,69 @@
+{
+  "script": "test_vad_and_recorder",
+  "results": [
+    {
+      "id": "TC_VAD_SILENT",
+      "area": "vad",
+      "desc": "pure silence \u2192 None (no speech)",
+      "status": "PASS",
+      "ms": 1,
+      "error": null
+    },
+    {
+      "id": "TC_VAD_TONE",
+      "area": "vad",
+      "desc": "tone + silence \u2192 returns trimmed WAV",
+      "status": "PASS",
+      "ms": 1,
+      "error": null
+    },
+    {
+      "id": "TC_VAD_TOO_SHORT",
+      "area": "vad",
+      "desc": "<0.3s audio bypasses VAD, returns original",
+      "status": "PASS",
+      "ms": 19,
+      "error": null
+    },
+    {
+      "id": "TC_030",
+      "area": "vad",
+      "desc": "VAD failure on silent audio \u2192 None (pipeline will use raw)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_REC_BUILTIN_KEYWORDS",
+      "area": "recorder",
+      "desc": "_find_builtin_mic_index matches MacBook Air Microphone",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_REC_BUILTIN_NOT_FOUND",
+      "area": "recorder",
+      "desc": "when no built-in mic \u2192 returns None (use default)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_REC_SERIALIZED",
+      "area": "recorder",
+      "desc": "start/stop serialized via _op_lock; rapid calls do not race",
+      "status": "PASS",
+      "ms": 649,
+      "error": null
+    },
+    {
+      "id": "TC_011",
+      "area": "recorder",
+      "desc": "recording <0.15s \u2192 returns None, no orphan WAV",
+      "status": "PASS",
+      "ms": 309,
+      "error": null
+    }
+  ]
+}

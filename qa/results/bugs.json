@@ -1,0 +1,52 @@
+{
+  "audit": "Pre-beta QA pass (2026-04-20)",
+  "scope": "WhisperFlow — Whisper Dictation macOS menu-bar app",
+  "methodology": "67 automated tests across 8 categories (anti-hallucination, cleaner, injector, performance, replacements, security, settings, stats/recorder/vad) + interactive smoke testing. Manual tests listed separately in final_report.md.",
+
+  "bugs_found_and_fixed_during_audit": [
+    {
+      "bug_id": "BUG_QA_001",
+      "title": "Anti-hallucination filter missed 'Thank you very much' (common Whisper hallucination)",
+      "severity": "high",
+      "component": "anti_hallucination",
+      "found_by": "TC_019 (test_anti_hallucination.py)",
+      "steps_to_reproduce": "filter_transcription('Thank you very much.') → returns 'Thank you very much.'",
+      "expected": "Returns '' — this phrase is the #1 Whisper hallucination on silent audio.",
+      "actual": "Returns the text unchanged. In production, this meant the user's silent microphone (mic-permission bug earlier) produced 'Thank you very much.' pasted into active apps.",
+      "evidence": "User's real dictation on 2026-04-18 logged 'Done (pasted): \"Thank you very much.\"' while mic was silent (peak=0.000).",
+      "fix_commit": "pending (anti_hallucination.py _HALLUCINATION_PHRASES expanded)",
+      "status": "FIXED"
+    }
+  ],
+
+  "pre_existing_bugs_fixed_in_prior_QA_passes": [
+    "32 bugs found in earlier architectural review — all closed. Summary:",
+    " - 1 CRITICAL (AppKit from worker threads)",
+    " - 8 HIGH (races, clipboard overwrite, silent permission losses, etc.)",
+    " - 10 MEDIUM (exception handling, locking, timing)",
+    " - 13 LOW (cleanup, retain cycles, shell injection)",
+    "See git log commits ebc3c3e, 949cd0d, 5606a37 for details."
+  ],
+
+  "open_bugs": [],
+
+  "test_infrastructure_bugs_fixed": [
+    {
+      "bug_id": "BUG_QA_TEST_001",
+      "title": "TC_043 search for 'os.system' matched comments in source, false positive",
+      "severity": "low",
+      "component": "qa/scripts/test_security.py",
+      "fix": "Strip comments before scanning, require function-call syntax 'os.system('",
+      "status": "FIXED"
+    }
+  ],
+
+  "not_applicable_categories": {
+    "upload_audio": "Product is mic-only; no upload path",
+    "cross_user_access": "Single-user local app; no auth, no server",
+    "session_expiry": "No sessions",
+    "server_rate_limiting": "No server; OpenAI API is upstream",
+    "path_traversal_uploads": "No file upload",
+    "export_file": "No file export — paste via Cmd+V is the export"
+  }
+}

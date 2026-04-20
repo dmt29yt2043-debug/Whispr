@@ -1,0 +1,61 @@
+{
+  "script": "test_stats",
+  "results": [
+    {
+      "id": "TC_STATS_RECORD",
+      "area": "stats",
+      "desc": "record_transcribe increments by_model correctly",
+      "status": "PASS",
+      "ms": 3,
+      "error": null
+    },
+    {
+      "id": "TC_044",
+      "area": "stats",
+      "desc": "paid_seconds excludes local, local_seconds separated",
+      "status": "PASS",
+      "ms": 2,
+      "error": null
+    },
+    {
+      "id": "TC_STATS_TOKENS",
+      "area": "stats",
+      "desc": "GPT token cost computed correctly",
+      "status": "PASS",
+      "ms": 1,
+      "error": null
+    },
+    {
+      "id": "TC_027",
+      "area": "stats",
+      "desc": "10 threads \u00d7 100 increments \u2014 no lost writes",
+      "status": "PASS",
+      "ms": 406,
+      "error": null
+    },
+    {
+      "id": "TC_042",
+      "area": "stats",
+      "desc": "SQL-injection-like model name handled via parameterized query",
+      "status": "PASS",
+      "ms": 1,
+      "error": null
+    },
+    {
+      "id": "TC_STATS_WORD_COUNT",
+      "area": "stats",
+      "desc": "word count increments across dictations",
+      "status": "PASS",
+      "ms": 1,
+      "error": null
+    },
+    {
+      "id": "TC_STATS_EMPTY_NO_RECORD",
+      "area": "stats",
+      "desc": "empty text/zero seconds doesn't add rows",
+      "status": "PASS",
+      "ms": 1,
+      "error": null
+    }
+  ]
+}

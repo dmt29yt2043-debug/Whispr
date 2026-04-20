@@ -1,0 +1,61 @@
+{
+  "script": "test_security",
+  "results": [
+    {
+      "id": "TC_042",
+      "area": "security",
+      "desc": "SQL injection attempt via model name is parameterized safely",
+      "status": "PASS",
+      "ms": 2,
+      "error": null
+    },
+    {
+      "id": "TC_043",
+      "area": "security",
+      "desc": "afplay fallback uses subprocess, no shell interpolation",
+      "status": "PASS",
+      "ms": 1,
+      "error": null
+    },
+    {
+      "id": "TC_035",
+      "area": "security",
+      "desc": "replacement value with HTML/script stored unchanged, no exec",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_041",
+      "area": "security",
+      "desc": "replacements stored inside config dir only; traversal keys = just data",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_SEC_API_KEY_NOT_IN_ERROR",
+      "area": "security",
+      "desc": "generic_error_message doesn't leak key-like strings",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_SEC_LOG_PATH_SAFE",
+      "area": "security",
+      "desc": "log file path is under user home, not world-writable",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_SEC_SETTINGS_PERMS",
+      "area": "security",
+      "desc": "settings.json is not group/world-writable",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    }
+  ]
+}

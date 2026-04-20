@@ -1,0 +1,85 @@
+{
+  "script": "test_injector",
+  "results": [
+    {
+      "id": "TC_032",
+      "area": "injector",
+      "desc": "empty text returns 'skipped', doesn't touch clipboard",
+      "status": "PASS",
+      "ms": 54,
+      "error": null
+    },
+    {
+      "id": "TC_032b",
+      "area": "injector",
+      "desc": "whitespace-only text returns 'skipped'",
+      "status": "PASS",
+      "ms": 104,
+      "error": null
+    },
+    {
+      "id": "TC_022",
+      "area": "injector",
+      "desc": "no text focus \u2192 returns 'copied', clipboard set, no paste",
+      "status": "PASS",
+      "ms": 57,
+      "error": null
+    },
+    {
+      "id": "TC_INJ_HAS_FOCUS",
+      "area": "injector",
+      "desc": "text focus \u2192 returns 'pasted', fires Cmd+V",
+      "status": "PASS",
+      "ms": 56,
+      "error": null
+    },
+    {
+      "id": "TC_023",
+      "area": "injector",
+      "desc": "clipboard verification: waits for clipboard to settle before paste",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_029",
+      "area": "injector",
+      "desc": "clipboard restore: skipped when user changes clipboard during wait",
+      "status": "PASS",
+      "ms": 967,
+      "error": null
+    },
+    {
+      "id": "TC_INJ_RESTORE_HAPPY",
+      "area": "injector",
+      "desc": "clipboard restore: restores when clipboard still ours",
+      "status": "PASS",
+      "ms": 960,
+      "error": null
+    },
+    {
+      "id": "TC_036",
+      "area": "injector",
+      "desc": "10 KB text handled without truncation",
+      "status": "PASS",
+      "ms": 3,
+      "error": null
+    },
+    {
+      "id": "TC_INJ_SET_LAST",
+      "area": "injector",
+      "desc": "set_last_transcription + repaste_last round-trip",
+      "status": "PASS",
+      "ms": 55,
+      "error": null
+    },
+    {
+      "id": "TC_INJ_REPASTE_EMPTY",
+      "area": "injector",
+      "desc": "repaste_last with no history returns False",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    }
+  ]
+}

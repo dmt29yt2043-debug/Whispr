@@ -17,20 +17,29 @@ log = logging.getLogger(__name__)
 # Noise markers to strip (bracketed non-speech)
 _BRACKET_NOISE = re.compile(r"\[[^\]]*\]|\([^\)]*\)")
 
-# Common Whisper hallucination phrases (case-insensitive substring match)
+# Common Whisper hallucination phrases (case-insensitive substring match).
+# These are things Whisper generates on silent / low-energy audio.
 _HALLUCINATION_PHRASES = (
     "thanks for watching",
     "thank you for watching",
+    "thank you very much",
+    "thank you so much",
+    "thank you for your attention",
+    "thanks for listening",
+    "thanks for tuning in",
     "subscribe to my channel",
     "please subscribe",
     "like and subscribe",
     "see you in the next video",
     "see you next time",
+    "see you later",
     "don't forget to subscribe",
     "спасибо за просмотр",
     "подписывайтесь на канал",
     "ставьте лайк",
     "до скорых встреч",
+    "всем пока",
+    "до встречи",
 )
 
 
