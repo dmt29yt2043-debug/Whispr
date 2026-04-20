@@ -41,7 +41,16 @@ _CONNECT_TIMEOUT_SEC = 3.0
 
 
 class StreamingTranscriber:
-    """Synchronous wrapper around the Realtime WebSocket. One instance per session."""
+    """Wrapper around the Realtime WebSocket. One instance per session.
+
+    start_async() opens the connection on a background thread so the main
+    thread (recorder start, overlay, sounds) doesn't block on TCP/TLS
+    handshake (typically 200-500ms).
+
+    While the socket is opening, feed() buffers chunks into _pending_chunks.
+    Once the socket is ready, the background thread flushes the buffer and
+    subsequent feed() calls go directly.
+    """
 
     def __init__(self):
         self._ws: Optional[websocket.WebSocket] = None
@@ -51,89 +60,140 @@ class StreamingTranscriber:
         self._error: Optional[str] = None
         self._closed = False
         self._lock = threading.Lock()
+        self._pending_chunks: list = []
+        self._pending_commit = False
+        self._ready = threading.Event()
 
     # ── Public API ───────────────────────────────────────────────────
 
-    def start(self, sample_rate: int = 16000) -> bool:
-        """Open WebSocket + configure transcription session. Returns True on success."""
-        if not _WEBSOCKET_AVAILABLE:
-            log.warning(
-                "websocket-client not installed in this build — "
-                "streaming unavailable, batch will be used"
-            )
-            return False
+    def start_async(self, sample_rate: int = 16000) -> bool:
+        """Kick off WebSocket opening on a background thread (non-blocking).
 
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
+        Returns True if websocket-client + API key are available (connection
+        may still fail later). Returns False to decline streaming immediately,
+        in which case the caller should fall back to batch.
+        """
+        if not _WEBSOCKET_AVAILABLE:
+            log.warning("websocket-client not installed — streaming unavailable")
+            return False
+        if not os.environ.get("OPENAI_API_KEY"):
             log.warning("No OPENAI_API_KEY — streaming unavailable")
             return False
 
+        t = threading.Thread(
+            target=self._connect_and_configure,
+            args=(sample_rate,),
+            daemon=True,
+        )
+        t.start()
+        return True
+
+    def _connect_and_configure(self, sample_rate: int) -> None:
         try:
-            self._ws = websocket.create_connection(
+            ws = websocket.create_connection(
                 _REALTIME_URL,
                 header=[
-                    f"Authorization: Bearer {api_key}",
+                    f"Authorization: Bearer {os.environ['OPENAI_API_KEY']}",
                     "OpenAI-Beta: realtime=v1",
                 ],
                 timeout=_CONNECT_TIMEOUT_SEC,
             )
-            # Don't block on recv while streaming
-            self._ws.settimeout(None)
-        except Exception as e:
-            log.warning("Realtime WS connect failed: %s", e)
-            self._ws = None
-            return False
+            ws.settimeout(None)
 
-        # Configure transcription-only session. turn_detection=None means
-        # WE control when to commit (on Fn release).
-        config = {
-            "type": "transcription_session.update",
-            "session": {
-                "input_audio_format": "pcm16",
-                "input_audio_transcription": {
-                    "model": _TRANSCRIBE_MODEL,
+            config = {
+                "type": "transcription_session.update",
+                "session": {
+                    "input_audio_format": "pcm16",
+                    "input_audio_transcription": {"model": _TRANSCRIBE_MODEL},
+                    "turn_detection": None,
                 },
-                "turn_detection": None,
-            },
-        }
-        try:
-            self._ws.send(json.dumps(config))
-        except Exception as e:
-            log.warning("Realtime WS session.update failed: %s", e)
-            self._safe_close()
-            return False
+            }
+            ws.send(json.dumps(config))
 
-        self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
-        self._reader_thread.start()
-        log.info("Streaming session opened (model=%s, sr=%dHz)", _TRANSCRIBE_MODEL, sample_rate)
-        return True
+            # Flush any chunks buffered while we were connecting
+            with self._lock:
+                if self._closed:
+                    try: ws.close()
+                    except Exception: pass
+                    return
+                self._ws = ws
+                pending = self._pending_chunks
+                self._pending_chunks = []
+                had_pending_commit = self._pending_commit
+
+            for chunk in pending:
+                try:
+                    b64 = base64.b64encode(chunk).decode("ascii")
+                    ws.send(json.dumps({"type": "input_audio_buffer.append", "audio": b64}))
+                except Exception as e:
+                    log.debug("Failed to flush buffered chunk: %s", e)
+                    break
+
+            self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
+            self._reader_thread.start()
+
+            # If caller already signalled commit while we were connecting, do it now
+            if had_pending_commit:
+                try:
+                    ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+                except Exception:
+                    pass
+
+            self._ready.set()
+            log.info("Streaming session opened (model=%s, sr=%dHz, buffered=%d chunks)",
+                     _TRANSCRIBE_MODEL, sample_rate, len(pending))
+        except Exception as e:
+            log.warning("Realtime WS connect failed: %s — batch fallback will be used", e)
+            self._ready.set()  # unblock any waiters even on failure
+            self._closed = True
+
+    # Back-compat alias (callers using old API)
+    def start(self, sample_rate: int = 16000) -> bool:
+        return self.start_async(sample_rate)
 
     def feed(self, pcm16_bytes: bytes) -> None:
-        """Send a chunk of PCM16 audio. Non-blocking; errors logged and swallowed."""
-        if not self._ws or self._closed:
+        """Send a chunk. If WS not ready yet, buffer it."""
+        if self._closed:
             return
+        with self._lock:
+            ws = self._ws
+            if ws is None:
+                # Still connecting — buffer (cap to avoid unbounded memory)
+                if len(self._pending_chunks) < 500:  # ~10 sec @ 50ms chunks
+                    self._pending_chunks.append(pcm16_bytes)
+                return
         try:
             b64 = base64.b64encode(pcm16_bytes).decode("ascii")
-            msg = json.dumps({
-                "type": "input_audio_buffer.append",
-                "audio": b64,
-            })
-            self._ws.send(msg)
+            ws.send(json.dumps({"type": "input_audio_buffer.append", "audio": b64}))
         except Exception as e:
             log.debug("Realtime WS feed failed: %s", e)
-            # One-shot: if send fails, mark closed so we don't keep trying
             self._closed = True
 
     def commit_and_wait(self, timeout: float = 3.0) -> Optional[str]:
-        """Send commit + wait for final transcription. Returns None on timeout/failure."""
-        if not self._ws or self._closed:
+        """Commit the audio buffer and wait for the final transcript."""
+        if self._closed:
             return None
 
-        try:
-            self._ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
-        except Exception as e:
-            log.warning("Realtime WS commit failed: %s", e)
-            return None
+        with self._lock:
+            ws = self._ws
+            if ws is None:
+                # WebSocket didn't open yet. Mark commit pending; the
+                # connection thread will send commit as soon as it's ready.
+                self._pending_commit = True
+
+        # Wait for WS to become ready (bounded) — then send commit if we
+        # haven't already pushed it from the connect thread.
+        self._ready.wait(timeout=min(timeout, 2.0))
+
+        with self._lock:
+            ws = self._ws
+            sent_pending = self._pending_commit and ws is not None
+        if ws is not None and not sent_pending:
+            try:
+                ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+            except Exception as e:
+                log.warning("Realtime WS commit failed: %s", e)
+                return None
 
         if self._final_event.wait(timeout=timeout):
             return self._final_text

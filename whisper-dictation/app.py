@@ -286,24 +286,26 @@ class WhisperDictationApp(rumps.App):
         except Exception:
             self._recording_bundle_id = None
 
-        # Streaming — open WebSocket session, attach chunk callback to recorder.
-        # If WebSocket connect fails, we silently fall back to batch; the recorder
-        # always keeps a local audio buffer for that fallback path.
-        self._streamer = None
-        if S.get("use_streaming", False) and S.get("mode", S.MODE_AUTO) != S.MODE_LOCAL:
-            try:
-                st = StreamingTranscriber()
-                if st.start(sample_rate=16000):
-                    self._streamer = st
-                    self.recorder.set_chunk_callback(st.feed)
-                    log.info("Streaming transcription enabled")
-            except Exception as e:
-                log.warning("Streaming init failed, will use batch: %s", e)
-
+        # Start UI + recorder IMMEDIATELY — no blocking work before this.
         self.recorder.start()
         play_start()
         self._set_title_safe(ICON_REC, "⏹ Stop Recording")
         self.overlay.show_recording()
+
+        # Streaming (if enabled) — open WebSocket in background thread so the
+        # 200-500ms TCP/TLS handshake doesn't delay the sound + overlay.
+        # Chunks are buffered in the streamer until the socket is ready.
+        self._streamer = None
+        if S.get("use_streaming", False) and S.get("mode", S.MODE_AUTO) != S.MODE_LOCAL:
+            try:
+                st = StreamingTranscriber()
+                if st.start_async(sample_rate=16000):
+                    self._streamer = st
+                    self.recorder.set_chunk_callback(st.feed)
+                    log.info("Streaming transcription enabled (connecting in background)")
+            except Exception as e:
+                log.warning("Streaming init failed, will use batch: %s", e)
+
         log.info("Recording started (app: %s)", self._recording_bundle_id)
 
     def _on_record_stop(self) -> None:
@@ -399,10 +401,14 @@ class WhisperDictationApp(rumps.App):
                 except Exception as e:
                     log.warning("Streaming commit failed, falling back to batch: %s", e)
                 finally:
-                    try:
-                        streamer.close()
-                    except Exception:
-                        pass
+                    # Close in background — the TCP close handshake can
+                    # take 1-2s and we don't need to wait for it before
+                    # injecting the text.
+                    _s = streamer
+                    threading.Thread(
+                        target=lambda: (_s.close() if _s else None),
+                        daemon=True,
+                    ).start()
                     self._streamer = None
 
             # Step 2: VAD (best-effort) — only if not already transcribed via streaming
