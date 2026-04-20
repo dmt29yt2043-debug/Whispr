@@ -433,14 +433,33 @@ class WhisperDictationApp(rumps.App):
         u_all = get_usage_all()
 
         def _fmt_usage(u):
-            whisper_min = u["whisper_seconds"] / 60.0
-            total_tokens = u["gpt_input_tokens"] + u["gpt_output_tokens"]
-            return (
-                f"    Whisper: {whisper_min:.1f} min\n"
-                f"    GPT:     {total_tokens:,} tokens"
-                f" ({u['gpt_input_tokens']:,} in / {u['gpt_output_tokens']:,} out)\n"
-                f"    💵 ${u['cost_usd']:.4f}"
-            )
+            lines = []
+            for row in u.get("by_model", []):
+                model = row["model"]
+                minutes = row["seconds"] / 60.0
+                cost = row["cost_usd"]
+                tag = "🆓" if cost == 0.0 else "💵"
+                short = (
+                    "gpt-4o-mini" if "gpt-4o" in model
+                    else ("whisper-1" if model == "whisper-1" else "local")
+                )
+                lines.append(
+                    f"    {tag} {short}: {minutes:.1f}m / {row['calls']} calls"
+                    + (f" → ${cost:.4f}" if cost else " (free)")
+                )
+            if not lines:
+                lines.append("    (no transcription yet)")
+
+            gpt_tokens = u["gpt_input_tokens"] + u["gpt_output_tokens"]
+            if gpt_tokens:
+                lines.append(
+                    f"    💵 GPT cleanup: {gpt_tokens:,} tokens"
+                    f" ({u['gpt_input_tokens']:,} in / {u['gpt_output_tokens']:,} out)"
+                    f" → ${u['gpt_cost_usd']:.4f}"
+                )
+            lines.append(f"    ──────────────")
+            lines.append(f"    TOTAL: ${u['total_cost_usd']:.4f}")
+            return "\n".join(lines)
 
         message = (
             f"📝 Words dictated\n"
@@ -448,13 +467,13 @@ class WhisperDictationApp(rumps.App):
             f"    Last 7d:    {get_words_week():,}\n"
             f"    Last 30d:   {get_words_month():,}\n"
             f"\n"
-            f"☁️ Today:\n{_fmt_usage(u_today)}\n"
+            f"📊 Today\n{_fmt_usage(u_today)}\n"
             f"\n"
-            f"☁️ Last 7 days:\n{_fmt_usage(u_week)}\n"
+            f"📊 Last 7 days\n{_fmt_usage(u_week)}\n"
             f"\n"
-            f"☁️ Last 30 days:\n{_fmt_usage(u_month)}\n"
+            f"📊 Last 30 days\n{_fmt_usage(u_month)}\n"
             f"\n"
-            f"☁️ All time:\n{_fmt_usage(u_all)}"
+            f"📊 All time\n{_fmt_usage(u_all)}"
         )
         rumps.alert(title="📊 Dictation Statistics", message=message)
 

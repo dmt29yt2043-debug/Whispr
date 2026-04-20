@@ -86,11 +86,10 @@ def _transcribe_api(audio_path: str) -> Optional[str]:
             text = (response.text or "").strip()
             duration = _audio_duration_seconds(audio_path)
             if duration > 0:
-                _stats.record_whisper_seconds(duration)
+                # Attribute usage to the ACTUAL model that handled the call
+                _stats.record_transcribe(model_name, duration)
             log.info("Transcribed via %s (%d chars)", model_name, len(text))
 
-            # BUG FIX #15: empty string from the primary model also
-            # counts as 'no result' — try the fallback before giving up.
             if text:
                 return text
             if model_name != _FALLBACK_MODEL:
@@ -99,7 +98,7 @@ def _transcribe_api(audio_path: str) -> Optional[str]:
         except Exception as e:
             log.warning("Transcription via %s failed: %s", model_name, e)
 
-    return last_text  # may be "" if all models returned empty
+    return last_text
 
 
 def _transcribe_local(audio_path: str) -> Optional[str]:
@@ -109,6 +108,10 @@ def _transcribe_local(audio_path: str) -> Optional[str]:
     try:
         segments, _info = model.transcribe(audio_path, beam_size=5)
         text = " ".join(seg.text.strip() for seg in segments).strip()
+        # Track local (free) usage so stats show how much ran offline
+        duration = _audio_duration_seconds(audio_path)
+        if duration > 0:
+            _stats.record_transcribe(_stats.MODEL_LOCAL, duration)
         return text
     except Exception as e:
         log.error("Local transcription failed: %s", e)
