@@ -34,7 +34,15 @@ DEFAULTS: Dict[str, Any] = {
     "vad_enabled": True,               # strip silence before transcription
     "always_english": False,           # translate to English
     "user_style": "",                  # free-form user style hint
-    "restore_clipboard": False,        # restore previous clipboard after paste
+    # When dictation is successfully pasted into a text field, we restore
+    # the user's previous clipboard content after 0.6s so the next plain
+    # Cmd+V pastes whatever they copied BEFORE dictating (e.g. a URL).
+    # The transcription remains accessible via Cmd+Shift+V (repaste_last).
+    # If focus wasn't in a text field, we SKIP restore — transcription
+    # stays in the clipboard so the user can paste it manually.
+    # Ownership-checked: if the user copied something new during the
+    # 0.6s window, we don't overwrite their new copy.
+    "restore_clipboard": True,
     "check_focus": True,               # check AX focus before paste
     "hotkey": "right_option",          # right_option | left_option | right_cmd |
                                        # caps_lock | right_shift | f13..f19
