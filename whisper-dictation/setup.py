@@ -56,10 +56,10 @@ OPTIONS = {
     },
     "includes": [
         "recorder", "transcriber", "cleaner", "injector", "replacements",
-        "stats", "sounds", "hotkey", "overlay", "focus_check",
+        "stats", "sounds", "hotkey", "overlay", "focus_check", "streaming_transcriber",
         "anti_hallucination", "vad", "settings",
         "rumps", "sounddevice", "_sounddevice_data", "soundfile",
-        "numpy", "openai", "pyperclip", "dotenv", "webrtcvad",
+        "numpy", "openai", "pyperclip", "dotenv", "webrtcvad", "websocket",
         "Quartz", "AppKit", "Foundation", "objc", "AVFoundation",
     ],
     "packages": [

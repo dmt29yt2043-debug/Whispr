@@ -83,6 +83,7 @@ from sounds import play_start, play_stop
 from hotkey import FnKeyHandler
 from repaste_hotkey import RePasteHotkey
 from overlay import StatusOverlay
+from streaming_transcriber import StreamingTranscriber
 import injector as _injector
 from focus_check import get_focused_text_info
 import settings as S
@@ -285,6 +286,20 @@ class WhisperDictationApp(rumps.App):
         except Exception:
             self._recording_bundle_id = None
 
+        # Streaming — open WebSocket session, attach chunk callback to recorder.
+        # If WebSocket connect fails, we silently fall back to batch; the recorder
+        # always keeps a local audio buffer for that fallback path.
+        self._streamer = None
+        if S.get("use_streaming", False) and S.get("mode", S.MODE_AUTO) != S.MODE_LOCAL:
+            try:
+                st = StreamingTranscriber()
+                if st.start(sample_rate=16000):
+                    self._streamer = st
+                    self.recorder.set_chunk_callback(st.feed)
+                    log.info("Streaming transcription enabled")
+            except Exception as e:
+                log.warning("Streaming init failed, will use batch: %s", e)
+
         self.recorder.start()
         play_start()
         self._set_title_safe(ICON_REC, "⏹ Stop Recording")
@@ -295,7 +310,20 @@ class WhisperDictationApp(rumps.App):
         audio_path = self.recorder.stop()
         play_stop()
 
+        # Detach + close streaming session if we had one. Batch pipeline
+        # can take over from recorded buffer if needed.
+        self.recorder.set_chunk_callback(None)
+
         if audio_path is None:
+            # Close any open streaming session — nothing to commit.
+            streamer = getattr(self, "_streamer", None)
+            if streamer is not None:
+                try:
+                    streamer.close()
+                except Exception:
+                    pass
+                self._streamer = None
+
             self._set_title_safe(ICON_IDLE, "🔴 Start Recording")
             self.overlay.hide()
 
@@ -343,23 +371,54 @@ class WhisperDictationApp(rumps.App):
             return False
 
         try:
-            # Step 1: VAD — strip silence (best effort; NOT authoritative).
-            # If VAD rejects the audio, still pass the raw recording to
-            # Whisper — VAD can be wrong (quiet voice, distant mic, etc.).
-            # Whisper itself is the authority on whether there's speech.
-            if S.get("vad_enabled", True):
+            # Step 0: Detach streaming chunk callback (no more audio coming)
+            self.recorder.set_chunk_callback(None)
+
+            # Step 1: Streaming path — if a WebSocket session is active,
+            # commit and wait briefly for the final transcript. On timeout
+            # or error, silently fall back to batch using the same audio.
+            raw_text = None
+            streamer = getattr(self, "_streamer", None)
+            if streamer is not None:
+                try:
+                    streamed = streamer.commit_and_wait(timeout=3.0)
+                    if streamed:
+                        from anti_hallucination import filter_transcription
+                        raw_text = filter_transcription(streamed)
+                        if raw_text:
+                            log.info("Streaming transcription succeeded (%d chars)", len(raw_text))
+                            # Record usage under streaming model in stats
+                            try:
+                                import stats as _stats
+                                from transcriber import _audio_duration_seconds
+                                dur = _audio_duration_seconds(audio_path)
+                                if dur > 0:
+                                    _stats.record_transcribe("gpt-4o-mini-transcribe", dur)
+                            except Exception:
+                                pass
+                except Exception as e:
+                    log.warning("Streaming commit failed, falling back to batch: %s", e)
+                finally:
+                    try:
+                        streamer.close()
+                    except Exception:
+                        pass
+                    self._streamer = None
+
+            # Step 2: VAD (best-effort) — only if not already transcribed via streaming
+            if raw_text is None and S.get("vad_enabled", True):
                 vad_path = vad.strip_silence(audio_path)
                 if _was_cancelled():
                     return
                 if vad_path is None:
                     log.info("VAD: no speech detected — falling back to raw audio")
-                    # Continue with raw audio_path; Whisper will decide
                 elif vad_path != audio_path:
                     temp_files.append(vad_path)
                     audio_path = vad_path
 
-            # Step 2: Transcribe (with anti-hallucination)
-            raw_text = transcribe(audio_path)
+            # Step 3: Batch transcribe (skipped if streaming already produced text)
+            if raw_text is None:
+                raw_text = transcribe(audio_path)
             if _was_cancelled():
                 return
             if not raw_text:
@@ -600,6 +659,7 @@ class WhisperDictationApp(rumps.App):
             "focus <on|off>         (check text focus)\n"
             "restore <on|off>       (restore clipboard)\n"
             "english <on|off>       (always translate to English)\n"
+            "streaming <on|off>     (WebSocket Realtime API, faster UX, ~2.5x cost)\n"
             "style <text>           (user style hint)\n\n"
             "Example: tone professional"
         )
@@ -676,6 +736,10 @@ class WhisperDictationApp(rumps.App):
             if value in bool_map:
                 S.set("always_english", bool_map[value])
                 self._notify("Settings", f"Always English: {value}")
+        elif key == "streaming":
+            if value in bool_map:
+                S.set("use_streaming", bool_map[value])
+                self._notify("Settings", f"Streaming: {value}")
         elif key == "style":
             S.set("user_style", value)
             self._notify("Settings", f"Style saved")

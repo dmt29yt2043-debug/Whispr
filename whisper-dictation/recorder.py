@@ -56,6 +56,9 @@ class Recorder:
         self._level_callback = None
         self._last_level_time = 0.0  # throttle callback to ~20 fps max
         self._last_error = None  # 'mic_silent' | 'mic_denied' | None
+        # Optional raw-chunk callback for streaming transcription
+        # (fired with PCM16 bytes on every audio callback).
+        self._chunk_callback = None
 
     @property
     def is_recording(self) -> bool:
@@ -70,6 +73,14 @@ class Recorder:
         """Register a callback(level: float) called during recording."""
         self._level_callback = cb
         self._persistent_level_callback = cb  # re-attached on each start()
+
+    def set_chunk_callback(self, cb):
+        """Register a callback(pcm16_bytes: bytes) fired with each audio chunk.
+
+        Used by streaming_transcriber to feed the WebSocket. The callback
+        must be fast and non-blocking — it runs on the CoreAudio thread.
+        """
+        self._chunk_callback = cb
 
     def start(self) -> None:
         """Start recording audio from the preferred microphone.
@@ -219,8 +230,6 @@ class Recorder:
         self._current_level = level
 
         # Throttle UI level updates to ~30 fps max (one every 33ms).
-        # Audio callback fires much faster and flooding AppHelper.callAfter
-        # was backing up the main run loop and causing stop() to hang.
         import time as _t
         now = _t.time()
         cb = self._level_callback
@@ -230,3 +239,14 @@ class Recorder:
                 cb(level)
             except Exception:
                 pass
+
+        # Forward PCM16 bytes to streaming transcriber if attached.
+        chunk_cb = self._chunk_callback
+        if chunk_cb is not None:
+            try:
+                pcm16 = (np.clip(arr, -1.0, 1.0) * 32767).astype(np.int16).tobytes()
+                chunk_cb(pcm16)
+            except Exception as e:
+                # Swallow to keep the CoreAudio callback alive; streaming
+                # will fall back to batch on final commit.
+                log.debug("chunk_callback error: %s", e)

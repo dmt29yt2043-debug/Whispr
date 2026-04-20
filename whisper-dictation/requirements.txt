@@ -12,3 +12,4 @@ pyobjc-framework-Cocoa>=10.0
 pyobjc-framework-Quartz>=10.0
 pyobjc-framework-AVFoundation>=10.0
 webrtcvad>=2.0.10
+websocket-client>=1.0

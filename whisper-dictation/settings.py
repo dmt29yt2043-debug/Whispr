@@ -42,6 +42,10 @@ DEFAULTS: Dict[str, Any] = {
     # stays in the clipboard so the user can paste it manually.
     # Ownership-checked: if the user copied something new during the
     # 0.6s window, we don't overwrite their new copy.
+    # Send audio chunks via WebSocket to OpenAI Realtime API while recording.
+    # Faster UX (transcript ready ~0.3-0.6s after release vs 1.5-2s for batch)
+    # but ~2.5x more expensive. Opt-in; batch is the default and fallback.
+    "use_streaming": False,
     "restore_clipboard": True,
     "check_focus": True,               # check AX focus before paste
     "hotkey": "right_option",          # right_option | left_option | right_cmd |
