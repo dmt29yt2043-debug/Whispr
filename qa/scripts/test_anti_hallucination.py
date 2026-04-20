@@ -57,5 +57,37 @@ def test_empty():
     assert filter_transcription("") == ""
 
 
+@case("TC_SCRIPT_KOREAN_ONLY", "anti_hallucination", "single Korean glyph ('어') rejected as hallucination")
+def test_korean_only():
+    assert filter_transcription("어") == ""
+
+
+@case("TC_SCRIPT_CHINESE_ONLY", "anti_hallucination", "pure Chinese rejected")
+def test_chinese_only():
+    assert filter_transcription("你好") == ""
+
+
+@case("TC_SCRIPT_ARABIC_ONLY", "anti_hallucination", "pure Arabic rejected")
+def test_arabic_only():
+    assert filter_transcription("مرحبا") == ""
+
+
+@case("TC_SCRIPT_MIXED_STRIP", "anti_hallucination", "stray Korean glyph in Russian text is stripped, Russian kept")
+def test_mixed_strip():
+    # Korean char is <30% of length → clean and keep
+    assert filter_transcription("привет мир 어") == "привет мир"
+
+
+@case("TC_SCRIPT_MOSTLY_FOREIGN", "anti_hallucination", "if majority of chars are foreign script, reject whole")
+def test_mostly_foreign():
+    # Majority of visible chars are Korean → reject
+    assert filter_transcription("어어어 a") == ""
+
+
+@case("TC_SCRIPT_MIXED_RU_EN", "anti_hallucination", "mixed Russian + English passes through")
+def test_mixed_ru_en():
+    assert filter_transcription("Привет world") == "Привет world"
+
+
 if __name__ == "__main__":
     run_all("test_anti_hallucination")

@@ -17,6 +17,36 @@ log = logging.getLogger(__name__)
 # Noise markers to strip (bracketed non-speech)
 _BRACKET_NOISE = re.compile(r"\[[^\]]*\]|\([^\)]*\)")
 
+# Characters from scripts we don't expect. Whisper sometimes hallucinates
+# a single CJK / Korean / Arabic glyph when the audio is short or unclear
+# ("готово" → "어" was observed). We keep Latin + Cyrillic + common symbols
+# and strip everything else.
+_UNSUPPORTED_SCRIPT = re.compile(
+    "["
+    "\u3040-\u309F"   # Hiragana
+    "\u30A0-\u30FF"   # Katakana
+    "\u3400-\u4DBF"   # CJK Extension A
+    "\u4E00-\u9FFF"   # CJK Unified Ideographs
+    "\uAC00-\uD7AF"   # Hangul Syllables
+    "\u1100-\u11FF"   # Hangul Jamo
+    "\u3130-\u318F"   # Hangul Compat Jamo
+    "\u0600-\u06FF"   # Arabic
+    "\u0700-\u074F"   # Syriac
+    "\u0780-\u07BF"   # Thaana
+    "\u0590-\u05FF"   # Hebrew
+    "\u0E00-\u0E7F"   # Thai
+    "\u0E80-\u0EFF"   # Lao
+    "\u0F00-\u0FFF"   # Tibetan
+    "\u0900-\u097F"   # Devanagari
+    "\u0980-\u09FF"   # Bengali
+    "\u0A00-\u0A7F"   # Gurmukhi
+    "\u0C00-\u0C7F"   # Telugu
+    "\u0D00-\u0D7F"   # Malayalam
+    "\u0530-\u058F"   # Armenian
+    "\u10A0-\u10FF"   # Georgian
+    "]"
+)
+
 # Common Whisper hallucination phrases (case-insensitive substring match).
 # These are things Whisper generates on silent / low-energy audio.
 _HALLUCINATION_PHRASES = (
@@ -98,6 +128,22 @@ def _is_repetition_hallucination(text: str) -> bool:
     return False
 
 
+def _strip_unsupported_scripts(text: str) -> Tuple[str, int]:
+    """Remove characters from scripts other than Latin/Cyrillic/digits/punct.
+
+    Returns (cleaned_text, num_removed). We keep English + Russian and
+    drop Korean, Japanese, Chinese, Arabic, etc. — Whisper sometimes
+    hallucinates a single glyph in those scripts on unclear audio.
+    """
+    count = 0
+    def _sub(m):
+        nonlocal count
+        count += len(m.group(0))
+        return ""
+    cleaned = _UNSUPPORTED_SCRIPT.sub(_sub, text)
+    return cleaned, count
+
+
 def filter_transcription(text: str) -> str:
     """Clean Whisper output. Returns cleaned text or empty string if hallucination."""
     if not text:
@@ -113,12 +159,27 @@ def filter_transcription(text: str) -> str:
         log.info("Anti-hallucination: text was only noise markers, dropped")
         return ""
 
-    # 3. Check for known hallucination phrases
+    # 3. Strip unsupported scripts (Korean/CJK/Arabic/etc. hallucinations).
+    #    If the original was mostly unsupported, reject whole thing.
+    orig_len = len(cleaned)
+    cleaned, removed = _strip_unsupported_scripts(cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if orig_len and removed / orig_len > 0.30:
+        log.info(
+            "Anti-hallucination: rejected — %d/%d chars were unsupported script",
+            removed, orig_len,
+        )
+        return ""
+    if not cleaned:
+        log.info("Anti-hallucination: text was entirely unsupported script")
+        return ""
+
+    # 4. Check for known hallucination phrases
     if _is_phrase_hallucination(cleaned):
         log.info("Anti-hallucination: phrase hallucination detected: %r", cleaned[:60])
         return ""
 
-    # 4. Check for repetition hallucinations
+    # 5. Check for repetition hallucinations
     if _is_repetition_hallucination(cleaned):
         log.info("Anti-hallucination: repetition detected: %r", cleaned[:80])
         return ""
