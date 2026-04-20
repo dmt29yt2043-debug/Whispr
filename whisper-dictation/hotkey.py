@@ -282,7 +282,16 @@ class FnKeyHandler:
 
             return event
         except Exception as e:
+            # BUG FIX #31: exception in the callback could leave the state
+            # machine half-mutated (_key_down=True but no worker thread
+            # spawned → next press ignored as 'already down', key appears
+            # dead until restart). Reset state so the next press works.
             log.error("Hotkey callback error: %s", e, exc_info=True)
+            try:
+                with self._state_lock:
+                    self._key_down = False
+            except Exception:
+                pass
             return event
 
     # ── State machine ────────────────────────────────────────────────

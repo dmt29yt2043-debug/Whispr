@@ -138,7 +138,12 @@ def clean_text(raw_text: str, bundle_id: Optional[str] = None) -> str:
             temperature=0.2,
             max_tokens=2048,
         )
-        cleaned = response.choices[0].message.content.strip()
+        # BUG FIX #14: content can be None when finish_reason='content_filter'
+        content = response.choices[0].message.content
+        if content is None:
+            log.warning("GPT returned None content (likely content filter) — using raw text")
+            return raw_text
+        cleaned = content.strip()
 
         # Record token usage for cost tracking
         try:

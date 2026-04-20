@@ -99,7 +99,11 @@ class RePasteHotkey:
                 has_cmd = bool(flags & kCGEventFlagMaskCommand)
                 has_shift = bool(flags & kCGEventFlagMaskShift)
 
-                if has_cmd and has_shift:
+                # BUG FIX #20: exclude modified-Option/Control combos.
+                # Only plain Cmd+Shift+V (no Option, no Control) triggers
+                # re-paste — otherwise Cmd+Shift+Option+V also fires.
+                other_mods = flags & (0x40000 | 0x80000)  # Control | Option
+                if has_cmd and has_shift and not other_mods:
                     log.info("Cmd+Shift+V detected — triggering re-paste")
                     threading.Thread(target=self._on_trigger, daemon=True).start()
                     return None  # suppress

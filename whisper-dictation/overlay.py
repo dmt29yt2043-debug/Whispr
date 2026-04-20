@@ -311,13 +311,16 @@ class StatusOverlay:
     def push_level(self, level: float) -> None:
         if not self._view:
             return
-        self._level_history.append(max(0.0, min(1.0, float(level))))
-        if len(self._level_history) > _BAR_COUNT:
-            self._level_history = self._level_history[-_BAR_COUNT:]
+        # BUG FIX #18: build a fresh list in one go so the closure
+        # doesn't see a mid-update state.
+        clamped = max(0.0, min(1.0, float(level)))
+        new_history = (self._level_history + [clamped])[-_BAR_COUNT:]
+        self._level_history = new_history
 
+        snapshot = list(new_history)
         def _do():
             if self._view:
-                self._view.setLevels_(self._level_history)
+                self._view.setLevels_(snapshot)
         AppHelper.callAfter(_do)
 
     def show_recording(self):

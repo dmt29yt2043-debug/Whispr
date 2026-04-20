@@ -46,6 +46,10 @@ class Recorder:
         self._frames: List[np.ndarray] = []
         self._stream: Optional[sd.InputStream] = None
         self._lock = threading.Lock()
+        # BUG FIX #21: separate op_lock serializes whole start/stop
+        # operations so two callbacks can't interleave partial state
+        # transitions (start A running while stop A in flight).
+        self._op_lock = threading.Lock()
         self._recording = False
         self._force_builtin = force_builtin
         self._current_level = 0.0  # 0..1 RMS level, for overlay
@@ -70,9 +74,16 @@ class Recorder:
     def start(self) -> None:
         """Start recording audio from the preferred microphone.
 
-        Fully serialized: if another start/stop is still running, this
-        waits for it to finish before proceeding.
+        Fully serialized with stop() via _op_lock — if another start/stop
+        is still running, this waits for it to finish before proceeding.
         """
+        self._op_lock.acquire()
+        try:
+            self._start_locked()
+        finally:
+            self._op_lock.release()
+
+    def _start_locked(self) -> None:
         with self._lock:
             if self._recording:
                 return
@@ -111,16 +122,18 @@ class Recorder:
                     raise
 
     def stop(self) -> Optional[str]:
-        """Stop recording and return path to the temp WAV file, or None if too short.
+        """Stop recording and return path to the temp WAV file, or None if too short."""
+        with self._op_lock:
+            return self._stop_locked()
 
-        Takes ownership of frames/stream atomically under the lock, then stops
-        the stream OUTSIDE the lock to avoid blocking a concurrent start().
-        """
-        self._level_callback = None
-
+    def _stop_locked(self) -> Optional[str]:
         with self._lock:
             if not self._recording:
                 return None
+            # BUG FIX #5: detach level callback UNDER the lock so the audio
+            # callback (which reads self._level_callback under the same lock)
+            # can't fire one more time between our detach and stream.stop().
+            self._level_callback = None
             self._recording = False
             stream = self._stream
             self._stream = None

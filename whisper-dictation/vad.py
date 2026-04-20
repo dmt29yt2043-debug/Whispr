@@ -150,7 +150,17 @@ def strip_silence(audio_path: str) -> Optional[str]:
         log.info("VAD: output too short after trim, returning None")
         return None
 
-    # Write to temp file
+    # Write to temp file; clean up on failure (BUG FIX #16, #23)
     tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False, prefix="vad_")
-    sf.write(tmp.name, out, sr, subtype="PCM_16")
+    tmp.close()  # close handle to avoid fd leak; we only need the path
+    try:
+        sf.write(tmp.name, out, sr, subtype="PCM_16")
+    except Exception as e:
+        log.warning("VAD: failed to write output: %s", e)
+        try:
+            import os as _os
+            _os.unlink(tmp.name)
+        except OSError:
+            pass
+        return audio_path  # fall back to original on write failure
     return tmp.name

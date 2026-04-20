@@ -3,6 +3,7 @@
 import os
 import sqlite3
 import logging
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Dict
 
@@ -22,25 +23,35 @@ PRICE_GPT4O_MINI_INPUT_PER_TOKEN = 0.15 / 1_000_000
 PRICE_GPT4O_MINI_OUTPUT_PER_TOKEN = 0.60 / 1_000_000
 
 
-def _ensure_db() -> sqlite3.Connection:
+@contextmanager
+def _db():
+    """Context manager: always closes the SQLite connection, even on error.
+
+    BUG FIX #22: previous code called conn.close() only on the happy
+    path, leaking the connection if an exception happened between
+    _ensure_db() and close().
+    """
     os.makedirs(_CONFIG_DIR, exist_ok=True)
     conn = sqlite3.connect(_DB_PATH)
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS word_counts ("
-        "  date TEXT PRIMARY KEY,"
-        "  count INTEGER NOT NULL DEFAULT 0"
-        ")"
-    )
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS usage ("
-        "  date TEXT PRIMARY KEY,"
-        "  whisper_seconds REAL NOT NULL DEFAULT 0,"
-        "  gpt_input_tokens INTEGER NOT NULL DEFAULT 0,"
-        "  gpt_output_tokens INTEGER NOT NULL DEFAULT 0"
-        ")"
-    )
-    conn.commit()
-    return conn
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS word_counts ("
+            "  date TEXT PRIMARY KEY,"
+            "  count INTEGER NOT NULL DEFAULT 0"
+            ")"
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS usage ("
+            "  date TEXT PRIMARY KEY,"
+            "  whisper_seconds REAL NOT NULL DEFAULT 0,"
+            "  gpt_input_tokens INTEGER NOT NULL DEFAULT 0,"
+            "  gpt_output_tokens INTEGER NOT NULL DEFAULT 0"
+            ")"
+        )
+        conn.commit()
+        yield conn
+    finally:
+        conn.close()
 
 
 # ── Words ───────────────────────────────────────────────────────────
@@ -52,14 +63,13 @@ def record_words(text: str) -> None:
     word_count = len(text.split())
     today = datetime.now().strftime("%Y-%m-%d")
     try:
-        conn = _ensure_db()
-        conn.execute(
-            "INSERT INTO word_counts (date, count) VALUES (?, ?)"
-            " ON CONFLICT(date) DO UPDATE SET count = count + ?",
-            (today, word_count, word_count),
-        )
-        conn.commit()
-        conn.close()
+        with _db() as conn:
+            conn.execute(
+                "INSERT INTO word_counts (date, count) VALUES (?, ?)"
+                " ON CONFLICT(date) DO UPDATE SET count = count + ?",
+                (today, word_count, word_count),
+            )
+            conn.commit()
         log.info("Recorded %d words for %s", word_count, today)
     except Exception as e:
         log.error("Failed to record stats: %s", e)
@@ -79,14 +89,12 @@ def get_words_month() -> int:
 
 def _get_words_since(since_date: str) -> int:
     try:
-        conn = _ensure_db()
-        cursor = conn.execute(
-            "SELECT COALESCE(SUM(count), 0) FROM word_counts WHERE date >= ?",
-            (since_date,),
-        )
-        result = cursor.fetchone()[0]
-        conn.close()
-        return result
+        with _db() as conn:
+            cursor = conn.execute(
+                "SELECT COALESCE(SUM(count), 0) FROM word_counts WHERE date >= ?",
+                (since_date,),
+            )
+            return cursor.fetchone()[0]
     except Exception as e:
         log.error("Failed to get stats: %s", e)
         return 0
@@ -100,14 +108,13 @@ def record_whisper_seconds(seconds: float) -> None:
         return
     today = datetime.now().strftime("%Y-%m-%d")
     try:
-        conn = _ensure_db()
-        conn.execute(
-            "INSERT INTO usage (date, whisper_seconds) VALUES (?, ?)"
-            " ON CONFLICT(date) DO UPDATE SET whisper_seconds = whisper_seconds + ?",
-            (today, seconds, seconds),
-        )
-        conn.commit()
-        conn.close()
+        with _db() as conn:
+            conn.execute(
+                "INSERT INTO usage (date, whisper_seconds) VALUES (?, ?)"
+                " ON CONFLICT(date) DO UPDATE SET whisper_seconds = whisper_seconds + ?",
+                (today, seconds, seconds),
+            )
+            conn.commit()
         log.info("Recorded %.2fs of Whisper API usage", seconds)
     except Exception as e:
         log.error("Failed to record whisper usage: %s", e)
@@ -119,16 +126,15 @@ def record_gpt_tokens(input_tokens: int, output_tokens: int) -> None:
         return
     today = datetime.now().strftime("%Y-%m-%d")
     try:
-        conn = _ensure_db()
-        conn.execute(
-            "INSERT INTO usage (date, gpt_input_tokens, gpt_output_tokens) VALUES (?, ?, ?)"
-            " ON CONFLICT(date) DO UPDATE SET"
-            "   gpt_input_tokens = gpt_input_tokens + ?,"
-            "   gpt_output_tokens = gpt_output_tokens + ?",
-            (today, input_tokens, output_tokens, input_tokens, output_tokens),
-        )
-        conn.commit()
-        conn.close()
+        with _db() as conn:
+            conn.execute(
+                "INSERT INTO usage (date, gpt_input_tokens, gpt_output_tokens) VALUES (?, ?, ?)"
+                " ON CONFLICT(date) DO UPDATE SET"
+                "   gpt_input_tokens = gpt_input_tokens + ?,"
+                "   gpt_output_tokens = gpt_output_tokens + ?",
+                (today, input_tokens, output_tokens, input_tokens, output_tokens),
+            )
+            conn.commit()
         log.info("Recorded GPT tokens: in=%d out=%d", input_tokens, output_tokens)
     except Exception as e:
         log.error("Failed to record gpt tokens: %s", e)
@@ -137,16 +143,15 @@ def record_gpt_tokens(input_tokens: int, output_tokens: int) -> None:
 def _get_usage_since(since_date: str) -> Dict[str, float]:
     """Return {whisper_seconds, gpt_input_tokens, gpt_output_tokens, cost_usd}."""
     try:
-        conn = _ensure_db()
-        cursor = conn.execute(
-            "SELECT COALESCE(SUM(whisper_seconds), 0),"
-            "       COALESCE(SUM(gpt_input_tokens), 0),"
-            "       COALESCE(SUM(gpt_output_tokens), 0)"
-            " FROM usage WHERE date >= ?",
-            (since_date,),
-        )
-        ws, gin, gout = cursor.fetchone()
-        conn.close()
+        with _db() as conn:
+            cursor = conn.execute(
+                "SELECT COALESCE(SUM(whisper_seconds), 0),"
+                "       COALESCE(SUM(gpt_input_tokens), 0),"
+                "       COALESCE(SUM(gpt_output_tokens), 0)"
+                " FROM usage WHERE date >= ?",
+                (since_date,),
+            )
+            ws, gin, gout = cursor.fetchone()
         cost = (
             ws * PRICE_WHISPER_PER_SEC
             + gin * PRICE_GPT4O_MINI_INPUT_PER_TOKEN

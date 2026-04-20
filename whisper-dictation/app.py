@@ -88,14 +88,24 @@ from focus_check import get_focused_text_info
 import settings as S
 import vad
 
-# Load .env: try user config dir first, then project dir
+# Load .env from every plausible location. BUG FIX #24: we used to
+# skip the project directory when sys.frozen was True (bundled), but
+# many users put OPENAI_API_KEY only in the project .env and had
+# silently-degraded cloud-mode with no feedback.
 _config_dir = os.path.expanduser("~/.whisper-dictation")
-load_dotenv(os.path.join(_config_dir, ".env"))
-
-if not getattr(sys, 'frozen', False):
-    _here = os.path.dirname(os.path.abspath(__file__))
-    load_dotenv(os.path.join(_here, ".env"))
-    load_dotenv(os.path.join(os.path.dirname(_here), ".env"))
+_here = os.path.dirname(os.path.abspath(__file__))
+_candidates = [
+    os.path.join(_config_dir, ".env"),
+    os.path.join(_here, ".env"),
+    os.path.join(os.path.dirname(_here), ".env"),
+    # Absolute path to the project source (for bundled apps that were
+    # built from source and the user keeps .env only there)
+    "/Users/maxsnigirev/Claude Code/Whispr Flow - Copy Cat/.env",
+    "/Users/maxsnigirev/Claude Code/Whispr Flow - Copy Cat/whisper-dictation/.env",
+]
+for _p in _candidates:
+    if os.path.isfile(_p):
+        load_dotenv(_p, override=False)
 
 # Set up logging ONLY in the main process.
 # multiprocessing child workers re-import this module as "__mp_main__";
@@ -125,6 +135,25 @@ else:
 
 log = logging.getLogger("app")
 
+
+def _generic_error_message(exc: Exception) -> str:
+    """Map internal exceptions to a short, user-safe overlay message.
+
+    Internal strings (which may contain API keys or tokens) are never
+    shown verbatim — we pick a safe category.
+    """
+    msg = str(exc).lower()
+    if "network" in msg or "connection" in msg or "timed out" in msg or "timeout" in msg:
+        return "Network error"
+    if "api" in msg and ("key" in msg or "401" in msg or "auth" in msg):
+        return "API auth error"
+    if "rate limit" in msg or "429" in msg:
+        return "Rate limited"
+    if "model" in msg:
+        return "Model error"
+    return "Processing failed"
+
+
 ICON_IDLE = "🎙"
 ICON_REC = "● REC"
 ICON_PROCESSING = "⏳"
@@ -147,6 +176,8 @@ class WhisperDictationApp(rumps.App):
         # Flag used to abort in-flight transcription/cleanup on Escape
         self._cancel_flag = threading.Event()
         self._processing = False  # True while _process_audio is running
+        self._recording_bundle_id = None  # captured at recording start
+        self._mic_error_shown = False
 
         # Secondary hotkeys — Cmd+Shift+V re-pastes, Escape cancels.
         # Escape only fires cancel when we're actively recording or
@@ -201,37 +232,39 @@ class WhisperDictationApp(rumps.App):
     def _on_cancel(self) -> None:
         """Emergency cancel via Escape — reset all state.
 
-        - Aborts in-flight transcription/cleanup via cancel flag.
-        - Force-stops the recorder (discards audio).
-        - Resets hotkey state machine.
-        - Hides overlay.
+        - Signals in-flight processing to bail out.
+        - UI is reset IMMEDIATELY.
+        - Heavy recorder teardown (stream.stop + WAV write + unlink) is
+          dispatched to a background thread so Escape feels instant
+          (bug fix #10).
         """
         log.info("Escape pressed — cancelling all operations")
-        # Signal in-flight processing to bail out after the next API call
+        # 1. Flag in-flight processing to bail after the next step
         self._cancel_flag.set()
 
-        # Force-stop recorder, discard any captured frames
-        try:
-            was_recording = self.recorder.is_recording
-            if was_recording:
-                audio_path = self.recorder.stop()
-                if audio_path:
-                    import os as _os
-                    try:
-                        _os.unlink(audio_path)
-                    except OSError:
-                        pass
-        except Exception as e:
-            log.warning("Cancel: recorder stop error: %s", e)
-
-        # Reset hotkey state machine so next press works cleanly
+        # 2. Reset hotkey state IMMEDIATELY (thread-safe)
         try:
             self.hotkey.reset_state()
         except Exception as e:
             log.warning("hotkey reset_state failed: %s", e)
 
+        # 3. Reset UI IMMEDIATELY
         self._set_title_safe(ICON_IDLE, "🔴 Start Recording")
         self.overlay.hide()
+
+        # 4. Heavy recorder teardown in background
+        def _tear_down():
+            try:
+                if self.recorder.is_recording:
+                    audio_path = self.recorder.stop()
+                    if audio_path:
+                        try:
+                            os.unlink(audio_path)
+                        except OSError:
+                            pass
+            except Exception as e:
+                log.warning("Cancel: recorder stop error: %s", e)
+        threading.Thread(target=_tear_down, daemon=True).start()
 
     def _set_title_safe(self, title: str, record_item_title: str = None) -> None:
         """Update menu bar title on the main thread (AppKit is not thread-safe)."""
@@ -366,8 +399,12 @@ class WhisperDictationApp(rumps.App):
             log.info("Done (%s): '%s'", result, final_text[:80])
 
         except Exception as e:
+            # BUG FIX #9: log full details for debugging, but show a
+            # generic message in the overlay so API keys / tokens that
+            # some exception strings contain don't leak on screen.
             log.error("Processing failed: %s", e, exc_info=True)
-            self.overlay.show_error(str(e)[:40])
+            generic = _generic_error_message(e)
+            self.overlay.show_error(generic)
             self._reset_ui()
         finally:
             self._processing = False
@@ -681,6 +718,22 @@ class WhisperDictationApp(rumps.App):
             rumps.alert("Not Found", message=f'"{key}" is not in the replacements list.')
 
     def _quit(self, _sender=None) -> None:
+        # BUG FIX #32: stop the overlay's NSTimer so the retain cycle
+        # (timer → lambda → view → window) gets broken before exit.
+        try:
+            self.overlay.hide()
+        except Exception:
+            pass
+        try:
+            if self.recorder.is_recording:
+                path = self.recorder.stop()
+                if path:
+                    try:
+                        os.unlink(path)
+                    except OSError:
+                        pass
+        except Exception:
+            pass
         rumps.quit_application()
 
 

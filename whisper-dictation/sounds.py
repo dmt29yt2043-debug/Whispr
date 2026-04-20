@@ -1,13 +1,14 @@
 """Sound feedback module — generates quiet start/stop beeps."""
 
 import os
+import atexit
 import tempfile
 import threading
 import math
+import shlex
 import struct
 import wave
 
-# Try to use macOS native sound playback
 try:
     from AppKit import NSSound
     _USE_NSSOUND = True
@@ -17,6 +18,19 @@ except ImportError:
 from typing import Dict
 
 _sounds_cache: Dict[str, str] = {}
+
+
+def _cleanup_cache() -> None:
+    """BUG FIX #25: remove cached tempfiles at process exit."""
+    for path in list(_sounds_cache.values()):
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    _sounds_cache.clear()
+
+
+atexit.register(_cleanup_cache)
 
 
 def _generate_tone(frequency: float, duration: float, volume: float, sample_rate: int = 44100) -> str:
@@ -59,8 +73,18 @@ def _play_file(path: str) -> None:
             sound.setVolume_(0.3)  # quiet
             sound.play()
     else:
-        # Fallback: use afplay (macOS built-in)
-        os.system(f'afplay -v 0.3 "{path}" &')
+        # Fallback: use afplay (macOS built-in). BUG FIX #26: subprocess
+        # with arg list instead of os.system + f-string — no shell,
+        # no injection, path with spaces/quotes safely handled.
+        import subprocess
+        try:
+            subprocess.Popen(
+                ["/usr/bin/afplay", "-v", "0.3", path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
 
 
 def play_start() -> None:

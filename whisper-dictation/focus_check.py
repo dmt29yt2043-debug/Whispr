@@ -9,9 +9,15 @@ so we always allow paste when the frontmost app is a known browser.
 """
 
 import logging
+import threading
 from typing import Optional, Tuple
 
 log = logging.getLogger(__name__)
+
+# BUG FIX #27: AX queries can block indefinitely if the frontmost app is
+# hung (beachballed Electron apps etc.). We run the check on a worker
+# thread and give up after a hard timeout.
+_AX_TIMEOUT_SEC = 0.5
 
 # Editable roles we consider safe to paste into
 _TEXT_ROLES = {
@@ -68,45 +74,63 @@ def get_focused_text_info() -> Tuple[bool, Optional[str]]:
 
     has_text_focus: True if frontmost app's focused element is a text-editable role.
     bundle_id: bundle ID of the frontmost app (for per-app settings).
+
+    Wraps the AX query in a worker thread with a hard timeout so the
+    pipeline doesn't hang if the frontmost app is beachballed.
     """
     bundle_id = _get_frontmost_bundle_id()
 
-    # Browsers always allow paste — web apps use custom roles we can't classify
     if bundle_id and bundle_id in _BROWSER_BUNDLE_IDS:
         log.debug("Known browser bundle %s — always paste", bundle_id)
         return True, bundle_id
 
+    # Run the actual AX check on a worker thread with a timeout
+    result = {"has_text": True}
+    done = threading.Event()
+
+    def _run():
+        try:
+            result["has_text"] = _ax_check_focus()
+        except Exception as e:
+            log.debug("AX focus check exception: %s", e)
+            result["has_text"] = True  # fail open
+        finally:
+            done.set()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    if not done.wait(_AX_TIMEOUT_SEC):
+        log.debug("AX focus check timed out — failing open")
+        return True, bundle_id
+    return result["has_text"], bundle_id
+
+
+def _ax_check_focus() -> bool:
     try:
         import ApplicationServices as AX
     except ImportError:
         log.debug("ApplicationServices not available")
-        return True, bundle_id  # fail open — assume focus is fine
+        return True
 
     try:
-        # Get the system-wide AX element
         system_wide = AX.AXUIElementCreateSystemWide()
-
-        # Get focused UI element
         err, focused = AX.AXUIElementCopyAttributeValue(
             system_wide, AX.kAXFocusedUIElementAttribute, None
         )
         if err != 0 or focused is None:
-            # No focused element reported — still try to paste, Cmd+V is generally safe
             log.debug("No focused element reported — fail open")
-            return True, bundle_id
+            return True
 
-        # Read its role
         err, role = AX.AXUIElementCopyAttributeValue(
             focused, AX.kAXRoleAttribute, None
         )
         if err != 0 or role is None:
-            return True, bundle_id  # fail open
+            return True
 
         role_str = str(role)
         is_text = role_str in _TEXT_ROLES
 
         if not is_text:
-            # Check if element has an editable value
             try:
                 err, value = AX.AXUIElementCopyAttributeValue(
                     focused, AX.kAXValueAttribute, None
@@ -117,22 +141,20 @@ def get_focused_text_info() -> Tuple[bool, Optional[str]]:
                 pass
 
         if not is_text:
-            # Check subrole — some fields report via subrole only
             try:
                 err, subrole = AX.AXUIElementCopyAttributeValue(
                     focused, AX.kAXSubroleAttribute, None
                 )
                 if err == 0 and subrole is not None:
                     subrole_str = str(subrole)
-                    # Common text-like subroles
                     if subrole_str in ("AXSecureTextField", "AXContentList"):
                         is_text = True
             except Exception:
                 pass
 
-        log.debug("AX focus: app=%s role=%s → text=%s", bundle_id, role_str, is_text)
-        return is_text, bundle_id
+        log.debug("AX focus: role=%s → text=%s", role_str, is_text)
+        return is_text
 
     except Exception as e:
         log.debug("AX focus check failed: %s — fail open", e)
-        return True, bundle_id
+        return True
