@@ -26,6 +26,10 @@ _PROMPT_ECHO_SNIPPETS = (
     "русская речь. hello world",
     "привет мир. готово. done",
     "hello world. привет мир",
+    # Newer vocab-hint prompt (streaming)
+    "hello. done. привет",
+    "привет. вроде. заработало",
+    "вроде. заработало. готово",
 )
 
 # Characters from scripts we don't expect. Whisper sometimes hallucinates
