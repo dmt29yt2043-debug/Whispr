@@ -279,34 +279,63 @@ class StatusOverlay:
         # before hiding — if a newer state has started, they skip.
         self._epoch = 0
 
-    def _ensure_window(self):
-        if self._window is not None:
-            return
+    def _active_screen(self):
+        """Pick the screen the user is ACTIVELY on.
 
-        screen = NSScreen.mainScreen()
-        if not screen:
-            return
+        NSScreen.mainScreen() returns the screen with the menu bar —
+        not the one where the user is working. For dictation overlay,
+        we want the screen where the cursor is, since that's where
+        the user's attention is (and where they'll paste the text).
+        Falls back to mainScreen() if we can't detect.
+        """
+        try:
+            from AppKit import NSEvent
+            mouse = NSEvent.mouseLocation()
+            for screen in NSScreen.screens():
+                f = screen.frame()
+                if (f.origin.x <= mouse.x <= f.origin.x + f.size.width and
+                        f.origin.y <= mouse.y <= f.origin.y + f.size.height):
+                    return screen
+        except Exception:
+            pass
+        return NSScreen.mainScreen()
+
+    def _window_frame_for_screen(self, screen):
+        """Compute top-right pill frame on the given screen."""
         sf = screen.frame()
-        x = sf.size.width - _WINDOW_W - _MARGIN_RIGHT
-        y = sf.size.height - _WINDOW_H - 32
+        x = sf.origin.x + sf.size.width - _WINDOW_W - _MARGIN_RIGHT
+        y = sf.origin.y + sf.size.height - _WINDOW_H - 32
+        return NSMakeRect(x, y, _WINDOW_W, _WINDOW_H)
 
-        rect = NSMakeRect(x, y, _WINDOW_W, _WINDOW_H)
-        self._window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-            rect, 0, NSBackingStoreBuffered, False,
-        )
-        self._window.setLevel_(NSFloatingWindowLevel)
-        self._window.setOpaque_(False)
-        self._window.setAlphaValue_(1.0)
-        self._window.setBackgroundColor_(NSColor.clearColor())
-        self._window.setIgnoresMouseEvents_(True)
-        self._window.setCollectionBehavior_(1 | 16)
+    def _ensure_window(self):
+        if self._window is None:
+            screen = self._active_screen()
+            if not screen:
+                return
+            rect = self._window_frame_for_screen(screen)
 
-        # Soft shadow under the pill
-        self._window.setHasShadow_(True)
+            self._window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+                rect, 0, NSBackingStoreBuffered, False,
+            )
+            self._window.setLevel_(NSFloatingWindowLevel)
+            self._window.setOpaque_(False)
+            self._window.setAlphaValue_(1.0)
+            self._window.setBackgroundColor_(NSColor.clearColor())
+            self._window.setIgnoresMouseEvents_(True)
+            self._window.setCollectionBehavior_(1 | 16)
+            self._window.setHasShadow_(True)
 
-        view = _OverlayView.alloc().initWithFrame_(NSMakeRect(0, 0, _WINDOW_W, _WINDOW_H))
-        self._window.setContentView_(view)
-        self._view = view
+            view = _OverlayView.alloc().initWithFrame_(NSMakeRect(0, 0, _WINDOW_W, _WINDOW_H))
+            self._window.setContentView_(view)
+            self._view = view
+
+        # Re-position for the currently active screen every time we
+        # show — user may have moved to a different display since
+        # the window was created.
+        screen = self._active_screen()
+        if screen:
+            rect = self._window_frame_for_screen(screen)
+            self._window.setFrame_display_(rect, False)
 
     def push_level(self, level: float) -> None:
         if not self._view:
