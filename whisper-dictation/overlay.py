@@ -280,19 +280,13 @@ class StatusOverlay:
         self._epoch = 0
 
     def _active_screen(self):
-        """Pick the screen where the user's target app window is.
+        """Pick the screen where the mouse cursor is.
 
-        Priority:
-        1. Frontmost app's main window — this is where the user's
-           text will be pasted, so the overlay should be on the same
-           display. Works even when the mouse hasn't moved.
-        2. Screen containing the mouse cursor — fallback when the
-           frontmost app has no on-screen window (or on problem apps).
-        3. NSScreen.mainScreen() — last resort.
+        Logic: the user clicks into a text field (mouse moved there),
+        THEN presses Fn. So the last known mouse position is where
+        they're working, and where the text will be pasted. Overlay
+        should appear on the same screen.
         """
-        s = self._screen_of_frontmost_window()
-        if s is not None:
-            return s
         try:
             from AppKit import NSEvent
             mouse = NSEvent.mouseLocation()
@@ -304,59 +298,6 @@ class StatusOverlay:
         except Exception:
             pass
         return NSScreen.mainScreen()
-
-    def _screen_of_frontmost_window(self):
-        """Find the screen containing the center of the frontmost app's
-        top window. Returns None if it can't be resolved."""
-        try:
-            from AppKit import NSWorkspace
-            from Quartz import (
-                CGWindowListCopyWindowInfo,
-                kCGWindowListOptionOnScreenOnly,
-                kCGNullWindowID,
-            )
-            ws = NSWorkspace.sharedWorkspace()
-            front = ws.frontmostApplication()
-            if not front:
-                return None
-            pid = int(front.processIdentifier())
-            windows = CGWindowListCopyWindowInfo(
-                kCGWindowListOptionOnScreenOnly, kCGNullWindowID
-            )
-            if not windows:
-                return None
-
-            main = NSScreen.mainScreen()
-            if not main:
-                return None
-            main_h = main.frame().size.height
-
-            for w in windows:
-                if int(w.get("kCGWindowOwnerPID", 0)) != pid:
-                    continue
-                # Skip menu-bar / desktop / utility windows (layer != 0)
-                if int(w.get("kCGWindowLayer", 0)) != 0:
-                    continue
-                b = w.get("kCGWindowBounds")
-                if not b:
-                    continue
-                # CG coords: origin top-left, y increases downward.
-                # NS coords: origin bottom-left, y increases upward.
-                cx = float(b.get("X", 0)) + float(b.get("Width", 0)) / 2
-                cy_cg = float(b.get("Y", 0)) + float(b.get("Height", 0)) / 2
-                # Convert CG y to NS y using main screen height as origin
-                cy_ns = main_h - cy_cg
-
-                for screen in NSScreen.screens():
-                    f = screen.frame()
-                    if (f.origin.x <= cx <= f.origin.x + f.size.width and
-                            f.origin.y <= cy_ns <= f.origin.y + f.size.height):
-                        return screen
-                # First real window found but couldn't map — stop scanning
-                return None
-        except Exception:
-            return None
-        return None
 
     def _window_frame_for_screen(self, screen):
         """Compute top-right pill frame on the given screen."""
