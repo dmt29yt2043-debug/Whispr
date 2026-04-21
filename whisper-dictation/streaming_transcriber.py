@@ -100,11 +100,22 @@ class StreamingTranscriber:
             )
             ws.settimeout(None)
 
+            # Vocab hint: bias the decoder toward English + Russian common
+            # words. Without this, short/unclear clips sometimes get
+            # semantically-close-but-wrong transcriptions (e.g. 'вроде
+            # заработало' heard as 'Молодец, заработала').
             config = {
                 "type": "transcription_session.update",
                 "session": {
                     "input_audio_format": "pcm16",
-                    "input_audio_transcription": {"model": _TRANSCRIBE_MODEL},
+                    "input_audio_transcription": {
+                        "model": _TRANSCRIBE_MODEL,
+                        "prompt": (
+                            "English and Russian speech. "
+                            "Английская и русская речь. "
+                            "Hello. Done. Привет. Вроде. Заработало. Готово."
+                        ),
+                    },
                     "turn_detection": None,
                 },
             }
