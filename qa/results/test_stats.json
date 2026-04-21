@@ -30,7 +30,7 @@
       "area": "stats",
       "desc": "10 threads \u00d7 100 increments \u2014 no lost writes",
       "status": "PASS",
-      "ms": 366,
+      "ms": 517,
       "error": null
     },
     {
@@ -38,7 +38,7 @@
       "area": "stats",
       "desc": "SQL-injection-like model name handled via parameterized query",
       "status": "PASS",
-      "ms": 1,
+      "ms": 2,
       "error": null
     },
     {

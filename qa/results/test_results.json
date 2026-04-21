@@ -152,7 +152,7 @@
         "area": "cleaner",
         "desc": "speech with fillers triggers GPT call",
         "status": "PASS",
-        "ms": 4,
+        "ms": 2,
         "error": null
       },
       {
@@ -160,7 +160,7 @@
         "area": "cleaner",
         "desc": "GPT returns None content \u2192 falls back to raw",
         "status": "PASS",
-        "ms": 2,
+        "ms": 0,
         "error": null
       },
       {
@@ -168,7 +168,7 @@
         "area": "cleaner",
         "desc": "network error \u2192 raw text returned",
         "status": "PASS",
-        "ms": 1,
+        "ms": 0,
         "error": null
       },
       {
@@ -184,7 +184,7 @@
         "area": "cleaner",
         "desc": "mode=local skips GPT entirely",
         "status": "PASS",
-        "ms": 1,
+        "ms": 0,
         "error": null
       },
       {
@@ -202,7 +202,7 @@
         "area": "injector",
         "desc": "empty text returns 'skipped', doesn't touch clipboard",
         "status": "PASS",
-        "ms": 56,
+        "ms": 55,
         "error": null
       },
       {
@@ -210,7 +210,7 @@
         "area": "injector",
         "desc": "whitespace-only text returns 'skipped'",
         "status": "PASS",
-        "ms": 94,
+        "ms": 102,
         "error": null
       },
       {
@@ -218,7 +218,7 @@
         "area": "injector",
         "desc": "no text focus \u2192 returns 'copied', clipboard set, no paste",
         "status": "PASS",
-        "ms": 52,
+        "ms": 55,
         "error": null
       },
       {
@@ -226,7 +226,7 @@
         "area": "injector",
         "desc": "text focus \u2192 returns 'pasted', fires Cmd+V",
         "status": "PASS",
-        "ms": 55,
+        "ms": 52,
         "error": null
       },
       {
@@ -242,7 +242,7 @@
         "area": "injector",
         "desc": "clipboard restore: skipped when user changes clipboard during wait",
         "status": "PASS",
-        "ms": 959,
+        "ms": 967,
         "error": null
       },
       {
@@ -250,7 +250,7 @@
         "area": "injector",
         "desc": "clipboard restore: restores when clipboard still ours",
         "status": "PASS",
-        "ms": 959,
+        "ms": 962,
         "error": null
       },
       {
@@ -266,7 +266,7 @@
         "area": "injector",
         "desc": "set_last_transcription + repaste_last round-trip",
         "status": "PASS",
-        "ms": 56,
+        "ms": 51,
         "error": null
       },
       {
@@ -284,7 +284,7 @@
         "area": "performance",
         "desc": "10 threads \u00d7 100 stats writes \u2014 latency p95 <50ms",
         "status": "PASS",
-        "ms": 345,
+        "ms": 627,
         "error": null
       },
       {
@@ -292,7 +292,7 @@
         "area": "performance",
         "desc": "20 threads \u00d7 50 settings writes \u2014 no lost writes, fast",
         "status": "PASS",
-        "ms": 573,
+        "ms": 698,
         "error": null
       },
       {
@@ -300,7 +300,7 @@
         "area": "performance",
         "desc": "anti-hallucination filter on 10,000 inputs < 1s",
         "status": "PASS",
-        "ms": 29,
+        "ms": 30,
         "error": null
       }
     ],
@@ -508,7 +508,7 @@
         "area": "stats",
         "desc": "10 threads \u00d7 100 increments \u2014 no lost writes",
         "status": "PASS",
-        "ms": 366,
+        "ms": 517,
         "error": null
       },
       {
@@ -516,7 +516,7 @@
         "area": "stats",
         "desc": "SQL-injection-like model name handled via parameterized query",
         "status": "PASS",
-        "ms": 1,
+        "ms": 2,
         "error": null
       },
       {
@@ -542,7 +542,7 @@
         "area": "vad",
         "desc": "pure silence \u2192 None (no speech)",
         "status": "PASS",
-        "ms": 2,
+        "ms": 3,
         "error": null
       },
       {
@@ -558,7 +558,7 @@
         "area": "vad",
         "desc": "<0.3s audio bypasses VAD, returns original",
         "status": "PASS",
-        "ms": 30,
+        "ms": 54,
         "error": null
       },
       {
@@ -566,7 +566,7 @@
         "area": "vad",
         "desc": "VAD failure on silent audio \u2192 None (pipeline will use raw)",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -590,7 +590,7 @@
         "area": "recorder",
         "desc": "start/stop serialized via _op_lock; rapid calls do not race",
         "status": "PASS",
-        "ms": 634,
+        "ms": 652,
         "error": null
       },
       {
@@ -598,7 +598,7 @@
         "area": "recorder",
         "desc": "recording <0.15s \u2192 returns None, no orphan WAV",
         "status": "PASS",
-        "ms": 299,
+        "ms": 282,
         "error": null
       }
     ]
