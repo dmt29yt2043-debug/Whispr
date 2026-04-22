@@ -6,7 +6,7 @@
       "area": "injector",
       "desc": "empty text returns 'skipped', doesn't touch clipboard",
       "status": "PASS",
-      "ms": 59,
+      "ms": 56,
       "error": null
     },
     {
@@ -22,7 +22,7 @@
       "area": "injector",
       "desc": "no text focus \u2192 returns 'copied', clipboard set, no paste",
       "status": "PASS",
-      "ms": 54,
+      "ms": 56,
       "error": null
     },
     {
@@ -30,7 +30,7 @@
       "area": "injector",
       "desc": "text focus \u2192 returns 'pasted', fires Cmd+V",
       "status": "PASS",
-      "ms": 56,
+      "ms": 54,
       "error": null
     },
     {
@@ -38,7 +38,7 @@
       "area": "injector",
       "desc": "clipboard verification: waits for clipboard to settle before paste",
       "status": "PASS",
-      "ms": 0,
+      "ms": 1,
       "error": null
     },
     {
@@ -46,7 +46,7 @@
       "area": "injector",
       "desc": "clipboard restore: skipped when user changes clipboard during wait",
       "status": "PASS",
-      "ms": 964,
+      "ms": 966,
       "error": null
     },
     {
@@ -54,7 +54,7 @@
       "area": "injector",
       "desc": "clipboard restore: restores when clipboard still ours",
       "status": "PASS",
-      "ms": 962,
+      "ms": 964,
       "error": null
     },
     {
@@ -62,7 +62,7 @@
       "area": "injector",
       "desc": "10 KB text handled without truncation",
       "status": "PASS",
-      "ms": 3,
+      "ms": 1,
       "error": null
     },
     {
@@ -70,7 +70,7 @@
       "area": "injector",
       "desc": "set_last_transcription + repaste_last round-trip",
       "status": "PASS",
-      "ms": 55,
+      "ms": 54,
       "error": null
     },
     {

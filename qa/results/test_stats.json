@@ -6,7 +6,7 @@
       "area": "stats",
       "desc": "record_transcribe increments by_model correctly",
       "status": "PASS",
-      "ms": 5,
+      "ms": 4,
       "error": null
     },
     {
@@ -14,7 +14,7 @@
       "area": "stats",
       "desc": "paid_seconds excludes local, local_seconds separated",
       "status": "PASS",
-      "ms": 1,
+      "ms": 2,
       "error": null
     },
     {
@@ -30,7 +30,7 @@
       "area": "stats",
       "desc": "10 threads \u00d7 100 increments \u2014 no lost writes",
       "status": "PASS",
-      "ms": 520,
+      "ms": 504,
       "error": null
     },
     {
@@ -46,7 +46,7 @@
       "area": "stats",
       "desc": "word count increments across dictations",
       "status": "PASS",
-      "ms": 1,
+      "ms": 2,
       "error": null
     },
     {

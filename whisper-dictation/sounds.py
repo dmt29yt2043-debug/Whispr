@@ -1,85 +1,119 @@
 """Sound feedback module — start/stop beeps for dictation.
 
-Plays via NSSound on the AppKit main thread (reliable CoreAudio access).
-Falls back to afplay subprocess if NSSound fails.
+Uses sounddevice (already a project dependency) so we can explicitly
+target the built-in Mac speakers regardless of which device is set as
+the system default output. MateView / external monitors often claim
+the default output slot but have no speakers — causing silent beeps.
 
-Key requirements:
-- NSSound MUST run on the main thread (background-thread calls are silently
-  dropped by CoreAudio on macOS 13+).
-- Strong reference must be kept in _nssound_cache to prevent GC mid-playback.
+Falls back to afplay on the system default if sounddevice fails.
 """
 
+import logging
+import math
 import os
-import atexit
 import subprocess
 import tempfile
 import threading
-import math
 import struct
 import wave
-import logging
+from typing import Optional
+
+import numpy as np
+import sounddevice as sd
 
 log = logging.getLogger(__name__)
 
-try:
-    from AppKit import NSSound
-    from PyObjCTools import AppHelper
-    _USE_NSSOUND = True
-except ImportError:
-    _USE_NSSOUND = False
+# Keywords that identify the built-in Mac output device
+_BUILTIN_OUTPUT_KW = ("built-in", "macbook", "mac mini", "imac", "internal speaker")
 
-from typing import Dict, Any
-
-_sounds_cache: Dict[str, str] = {}
-# Strong references prevent GC while NSSound is playing.
-_nssound_cache: Dict[str, Any] = {}
+# Cached device index — found once at first play, then reused
+_builtin_output_idx: Optional[int] = None
+_builtin_output_checked = False
+_builtin_lock = threading.Lock()
 
 
-def _cleanup_cache() -> None:
-    for path in list(_sounds_cache.values()):
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
-    _sounds_cache.clear()
-    _nssound_cache.clear()
+def _find_builtin_output() -> Optional[int]:
+    """Return sounddevice index of the built-in Mac speakers, or None."""
+    try:
+        devices = sd.query_devices()
+        for i, dev in enumerate(devices):
+            if dev.get("max_output_channels", 0) < 1:
+                continue
+            name = dev.get("name", "").lower()
+            if any(kw in name for kw in _BUILTIN_OUTPUT_KW):
+                log.info("Built-in output found: %s (index %d)", dev["name"], i)
+                return i
+    except Exception as e:
+        log.debug("query_devices failed: %s", e)
+    return None
 
 
-atexit.register(_cleanup_cache)
+def _get_builtin_output() -> Optional[int]:
+    """Return cached built-in output index (lazy init)."""
+    global _builtin_output_idx, _builtin_output_checked
+    with _builtin_lock:
+        if not _builtin_output_checked:
+            _builtin_output_idx = _find_builtin_output()
+            _builtin_output_checked = True
+        return _builtin_output_idx
 
 
-def _generate_tone(frequency: float, duration: float, volume: float,
-                   sample_rate: int = 44100) -> str:
-    """Generate a WAV tone and return its cached path."""
-    cache_key = f"{frequency}_{duration}_{volume}"
-    if cache_key in _sounds_cache:
-        return _sounds_cache[cache_key]
+def _tone_array(frequency: float, duration: float, volume: float,
+                sample_rate: int = 44100) -> np.ndarray:
+    """Generate a sine tone with fade-in/out as float32 array."""
+    n = int(sample_rate * duration)
+    t = np.linspace(0, duration, n, endpoint=False)
+    fade = int(0.01 * sample_rate)  # 10ms fade
+    env = np.ones(n, dtype=np.float32)
+    env[:fade] = np.linspace(0, 1, fade)
+    env[n - fade:] = np.linspace(1, 0, fade)
+    return (env * volume * np.sin(2 * np.pi * frequency * t)).astype(np.float32)
 
-    n_samples = int(sample_rate * duration)
-    fade = int(0.01 * sample_rate)  # 10ms fade in/out
+
+def _play_sd(samples: np.ndarray, sample_rate: int = 44100) -> bool:
+    """Play samples via sounddevice on the built-in output. Returns True on success."""
+    try:
+        device = _get_builtin_output()
+        sd.play(samples, samplerate=sample_rate, device=device, blocking=True)
+        return True
+    except Exception as e:
+        log.debug("sounddevice playback failed (device=%s): %s", _get_builtin_output(), e)
+        return False
+
+
+# ── afplay fallback (WAV file, system default device) ────────────────
+
+_wav_cache: dict = {}
+
+
+def _generate_wav(frequency: float, duration: float, volume: float,
+                  sample_rate: int = 44100) -> str:
+    """Generate / cache a WAV file for the afplay fallback."""
+    key = f"{frequency}_{duration}_{volume}"
+    if key in _wav_cache:
+        return _wav_cache[key]
+    n = int(sample_rate * duration)
+    fade = int(0.01 * sample_rate)
     samples = []
-    for i in range(n_samples):
+    for i in range(n):
         t = i / sample_rate
         env = 1.0
         if i < fade:
             env = i / fade
-        elif i > n_samples - fade:
-            env = (n_samples - i) / fade
+        elif i > n - fade:
+            env = (n - i) / fade
         samples.append(int(volume * env * math.sin(2 * math.pi * frequency * t) * 32767))
-
     tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False, prefix="whisper_snd_")
     with wave.open(tmp.name, "w") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(sample_rate)
-        wf.writeframes(struct.pack(f"<{n_samples}h", *samples))
-
-    _sounds_cache[cache_key] = tmp.name
+        wf.writeframes(struct.pack(f"<{n}h", *samples))
+    _wav_cache[key] = tmp.name
     return tmp.name
 
 
 def _afplay(path: str) -> None:
-    """Fire-and-forget subprocess fallback."""
     try:
         subprocess.Popen(
             ["/usr/bin/afplay", "-v", "1.0", path],
@@ -90,51 +124,25 @@ def _afplay(path: str) -> None:
         log.debug("afplay failed: %s", e)
 
 
-def _play_on_main(path: str) -> None:
-    """Play WAV via NSSound on the AppKit main thread.
+# ── Public API ────────────────────────────────────────────────────────
 
-    NSSound from a background thread is silently dropped by CoreAudio on
-    macOS 13+ — AppHelper.callAfter guarantees main-thread execution.
-    """
-    def _do() -> None:
-        played = False
-        if _USE_NSSOUND:
-            try:
-                sound = _nssound_cache.get(path)
-                if sound is None:
-                    sound = NSSound.alloc().initWithContentsOfFile_byReference_(path, True)
-                    if sound:
-                        sound.setVolume_(1.0)
-                        _nssound_cache[path] = sound
-                if sound:
-                    sound.stop()  # rewind if previously played
-                    played = bool(sound.play())
-                    if not played:
-                        log.debug("NSSound.play() returned False — using afplay fallback")
-            except Exception as e:
-                log.debug("NSSound error: %s", e)
-
-        if not played:
-            _afplay(path)
-
-    if _USE_NSSOUND:
-        try:
-            AppHelper.callAfter(_do)
-            return
-        except Exception as e:
-            log.debug("callAfter failed: %s — playing directly", e)
-
-    # If callAfter unavailable (e.g. run loop not started yet), play inline
-    _afplay(path)
+def _play_beep(frequency: float, duration: float, volume: float) -> None:
+    """Play a beep: sounddevice on built-in speakers, afplay as fallback."""
+    samples = _tone_array(frequency, duration, volume)
+    if not _play_sd(samples):
+        path = _generate_wav(frequency, duration, volume)
+        _afplay(path)
 
 
 def play_start() -> None:
     """High-pitched beep — recording started."""
-    path = _generate_tone(frequency=880, duration=0.12, volume=0.8)
-    threading.Thread(target=_play_on_main, args=(path,), daemon=True).start()
+    threading.Thread(
+        target=_play_beep, args=(880, 0.12, 0.7), daemon=True
+    ).start()
 
 
 def play_stop() -> None:
     """Lower-pitched beep — recording stopped."""
-    path = _generate_tone(frequency=660, duration=0.12, volume=0.8)
-    threading.Thread(target=_play_on_main, args=(path,), daemon=True).start()
+    threading.Thread(
+        target=_play_beep, args=(660, 0.12, 0.7), daemon=True
+    ).start()

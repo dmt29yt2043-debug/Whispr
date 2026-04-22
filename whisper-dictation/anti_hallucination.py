@@ -22,13 +22,16 @@ _BRACKET_NOISE = re.compile(r"\[[^\]]*\]|\([^\)]*\)")
 # even as a substring — Whisper sometimes echoes the prompt back on
 # silent/garbled audio.
 _PROMPT_ECHO_SNIPPETS = (
+    # Current streaming prompt ("Russian and English speech. Русская и
+    # английская речь.") — phrases most likely to appear on silent echo
+    "russian and english speech",
+    "русская и английская речь",
     "english and russian speech",
+    "english or russian",
+    # Legacy prompts (pre-streaming, kept for safety)
     "русская речь. hello world",
     "привет мир. готово. done",
     "hello world. привет мир",
-    # Streaming prompt — gpt-4o-mini-transcribe echoes this on silent audio
-    "english or russian",
-    # Older vocab-hint prompts
     "hello. done. привет",
     "привет. вроде. заработало",
     "вроде. заработало. готово",
@@ -195,11 +198,16 @@ def filter_transcription(text: str) -> str:
         return ""
 
     # 4. Prompt-echo detection — Whisper sometimes echoes API prompts
-    #    back on silent audio. Match synthetic phrases as substrings.
+    #    back on silent audio. Reject only when the echo DOMINATES the
+    #    text (>60%) — otherwise we'd throw away legitimate dictation
+    #    that happens to contain the phrase (e.g., "I speak English or
+    #    Russian fluently").
     low = cleaned.lower()
+    low_len = max(len(low), 1)
     for snip in _PROMPT_ECHO_SNIPPETS:
-        if snip in low:
-            log.info("Anti-hallucination: prompt-echo detected (%r)", snip)
+        if snip in low and len(snip) / low_len > 0.6:
+            log.info("Anti-hallucination: prompt-echo detected (%r in %r)",
+                     snip, cleaned[:60])
             return ""
 
     # 5. Check for known hallucination phrases

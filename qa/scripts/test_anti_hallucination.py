@@ -89,5 +89,31 @@ def test_mixed_ru_en():
     assert filter_transcription("Привет world") == "Привет world"
 
 
+# ── Prompt-echo dominant-substring logic ────────────────────────────
+
+@case("TC_PROMPT_ECHO_PURE", "anti_hallucination",
+      "pure streaming-prompt echo → rejected (echo dominates text)")
+def test_prompt_echo_pure():
+    # Classic silent-audio echo: text IS the prompt
+    assert filter_transcription("Russian and English speech.") == ""
+    assert filter_transcription("Русская и английская речь.") == ""
+
+
+@case("TC_PROMPT_ECHO_NONDOMINANT", "anti_hallucination",
+      "legitimate sentence containing 'english or russian' kept (echo <60% of text)")
+def test_prompt_echo_nondominant():
+    # Real dictation that happens to mention the phrase → must NOT reject
+    txt = "I can speak English or Russian fluently, which do you prefer?"
+    out = filter_transcription(txt)
+    assert out == txt, f"filter incorrectly dropped legit text: {out!r}"
+
+
+@case("TC_PROMPT_ECHO_LEGACY", "anti_hallucination",
+      "legacy echo 'Hello. Done. Привет.' still blocked when dominant")
+def test_prompt_echo_legacy():
+    # Older prompts must still be caught on silent audio
+    assert filter_transcription("Hello. Done. Привет.") == ""
+
+
 if __name__ == "__main__":
     run_all("test_anti_hallucination")

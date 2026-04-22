@@ -128,6 +128,30 @@
       "status": "PASS",
       "ms": 0,
       "error": null
+    },
+    {
+      "id": "TC_PROMPT_ECHO_PURE",
+      "area": "anti_hallucination",
+      "desc": "pure streaming-prompt echo \u2192 rejected (echo dominates text)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_PROMPT_ECHO_NONDOMINANT",
+      "area": "anti_hallucination",
+      "desc": "legitimate sentence containing 'english or russian' kept (echo <60% of text)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_PROMPT_ECHO_LEGACY",
+      "area": "anti_hallucination",
+      "desc": "legacy echo 'Hello. Done. \u041f\u0440\u0438\u0432\u0435\u0442.' still blocked when dominant",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
     }
   ]
 }

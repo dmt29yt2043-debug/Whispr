@@ -100,15 +100,16 @@ class StreamingTranscriber:
             )
             ws.settimeout(None)
 
-            # No prompt — avoids prompt-echo hallucination on short/silent
-            # audio. gpt-4o-mini-transcribe is multilingual and handles
-            # English+Russian without a hint.
+            # Bilingual prompt helps the model on Russian words — accuracy
+            # dropped noticeably without it. anti_hallucination.py catches
+            # the rare silent-audio echo via dominant-substring detection.
             config = {
                 "type": "transcription_session.update",
                 "session": {
                     "input_audio_format": "pcm16",
                     "input_audio_transcription": {
                         "model": _TRANSCRIBE_MODEL,
+                        "prompt": "Russian and English speech. Русская и английская речь.",
                     },
                     "turn_detection": None,
                 },
