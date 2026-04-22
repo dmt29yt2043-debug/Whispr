@@ -100,15 +100,15 @@ class StreamingTranscriber:
             )
             ws.settimeout(None)
 
-            # Minimal vocab hint: just enough to bias toward English+Russian
-            # without giving Whisper a long sentence to echo on silent clips.
+            # No prompt — avoids prompt-echo hallucination on short/silent
+            # audio. gpt-4o-mini-transcribe is multilingual and handles
+            # English+Russian without a hint.
             config = {
                 "type": "transcription_session.update",
                 "session": {
                     "input_audio_format": "pcm16",
                     "input_audio_transcription": {
                         "model": _TRANSCRIBE_MODEL,
-                        "prompt": "English or Russian.",
                     },
                     "turn_detection": None,
                 },

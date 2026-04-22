@@ -152,7 +152,7 @@
         "area": "cleaner",
         "desc": "speech with fillers triggers GPT call",
         "status": "PASS",
-        "ms": 2,
+        "ms": 3,
         "error": null
       },
       {
@@ -196,13 +196,63 @@
         "error": null
       }
     ],
+    "test_hotkey": [
+      {
+        "id": "TC_HK_HOLD",
+        "area": "hotkey",
+        "desc": "push-to-talk: hold \u2265 _MIN_HOLD \u2192 start + stop on release",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_HK_SINGLE_TAP",
+        "area": "hotkey",
+        "desc": "single short tap \u2192 start + stop after double-tap timeout",
+        "status": "PASS",
+        "ms": 459,
+        "error": null
+      },
+      {
+        "id": "TC_HK_DOUBLE_TAP",
+        "area": "hotkey",
+        "desc": "double-tap: two short taps \u2192 toggle mode, recording stays on",
+        "status": "PASS",
+        "ms": 655,
+        "error": null
+      },
+      {
+        "id": "TC_HK_TOGGLE_STOP",
+        "area": "hotkey",
+        "desc": "in toggle mode, next press stops recording",
+        "status": "PASS",
+        "ms": 559,
+        "error": null
+      },
+      {
+        "id": "TC_HK_RESET_CANCELS_TIMER",
+        "area": "hotkey",
+        "desc": "reset_state() cancels pending double-tap timer",
+        "status": "PASS",
+        "ms": 653,
+        "error": null
+      },
+      {
+        "id": "TC_HK_DEBOUNCE",
+        "area": "hotkey",
+        "desc": "rapid repeated press without release is debounced",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      }
+    ],
     "test_injector": [
       {
         "id": "TC_032",
         "area": "injector",
         "desc": "empty text returns 'skipped', doesn't touch clipboard",
         "status": "PASS",
-        "ms": 55,
+        "ms": 59,
         "error": null
       },
       {
@@ -210,7 +260,7 @@
         "area": "injector",
         "desc": "whitespace-only text returns 'skipped'",
         "status": "PASS",
-        "ms": 102,
+        "ms": 114,
         "error": null
       },
       {
@@ -218,7 +268,7 @@
         "area": "injector",
         "desc": "no text focus \u2192 returns 'copied', clipboard set, no paste",
         "status": "PASS",
-        "ms": 55,
+        "ms": 54,
         "error": null
       },
       {
@@ -226,7 +276,7 @@
         "area": "injector",
         "desc": "text focus \u2192 returns 'pasted', fires Cmd+V",
         "status": "PASS",
-        "ms": 52,
+        "ms": 56,
         "error": null
       },
       {
@@ -242,7 +292,7 @@
         "area": "injector",
         "desc": "clipboard restore: skipped when user changes clipboard during wait",
         "status": "PASS",
-        "ms": 967,
+        "ms": 964,
         "error": null
       },
       {
@@ -258,7 +308,7 @@
         "area": "injector",
         "desc": "10 KB text handled without truncation",
         "status": "PASS",
-        "ms": 1,
+        "ms": 3,
         "error": null
       },
       {
@@ -266,7 +316,7 @@
         "area": "injector",
         "desc": "set_last_transcription + repaste_last round-trip",
         "status": "PASS",
-        "ms": 51,
+        "ms": 55,
         "error": null
       },
       {
@@ -284,7 +334,7 @@
         "area": "performance",
         "desc": "10 threads \u00d7 100 stats writes \u2014 latency p95 <50ms",
         "status": "PASS",
-        "ms": 627,
+        "ms": 475,
         "error": null
       },
       {
@@ -292,7 +342,7 @@
         "area": "performance",
         "desc": "20 threads \u00d7 50 settings writes \u2014 no lost writes, fast",
         "status": "PASS",
-        "ms": 698,
+        "ms": 614,
         "error": null
       },
       {
@@ -376,7 +426,7 @@
         "area": "security",
         "desc": "SQL injection attempt via model name is parameterized safely",
         "status": "PASS",
-        "ms": 3,
+        "ms": 4,
         "error": null
       },
       {
@@ -384,7 +434,7 @@
         "area": "security",
         "desc": "afplay fallback uses subprocess, no shell interpolation",
         "status": "PASS",
-        "ms": 1,
+        "ms": 2,
         "error": null
       },
       {
@@ -392,7 +442,7 @@
         "area": "security",
         "desc": "replacement value with HTML/script stored unchanged, no exec",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -442,7 +492,7 @@
         "area": "settings",
         "desc": "corrupted JSON \u2192 defaults, no crash",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -466,7 +516,7 @@
         "area": "settings",
         "desc": "50 concurrent set() from 20 threads \u2014 no lost writes",
         "status": "PASS",
-        "ms": 12,
+        "ms": 11,
         "error": null
       },
       {
@@ -484,7 +534,7 @@
         "area": "stats",
         "desc": "record_transcribe increments by_model correctly",
         "status": "PASS",
-        "ms": 3,
+        "ms": 5,
         "error": null
       },
       {
@@ -508,7 +558,7 @@
         "area": "stats",
         "desc": "10 threads \u00d7 100 increments \u2014 no lost writes",
         "status": "PASS",
-        "ms": 517,
+        "ms": 520,
         "error": null
       },
       {
@@ -542,7 +592,7 @@
         "area": "vad",
         "desc": "pure silence \u2192 None (no speech)",
         "status": "PASS",
-        "ms": 3,
+        "ms": 1,
         "error": null
       },
       {
@@ -558,7 +608,7 @@
         "area": "vad",
         "desc": "<0.3s audio bypasses VAD, returns original",
         "status": "PASS",
-        "ms": 54,
+        "ms": 16,
         "error": null
       },
       {
@@ -566,7 +616,7 @@
         "area": "vad",
         "desc": "VAD failure on silent audio \u2192 None (pipeline will use raw)",
         "status": "PASS",
-        "ms": 1,
+        "ms": 0,
         "error": null
       },
       {
@@ -590,23 +640,23 @@
         "area": "recorder",
         "desc": "start/stop serialized via _op_lock; rapid calls do not race",
         "status": "PASS",
-        "ms": 652,
+        "ms": 646,
         "error": null
       },
       {
         "id": "TC_011",
         "area": "recorder",
-        "desc": "recording <0.15s \u2192 returns None, no orphan WAV",
+        "desc": "recording <0.4s \u2192 returns None, no orphan WAV",
         "status": "PASS",
-        "ms": 282,
+        "ms": 288,
         "error": null
       }
     ]
   },
   "summary": {
-    "pass": 73,
+    "pass": 79,
     "fail": 0,
     "error": 0,
-    "total": 73
+    "total": 79
   }
 }

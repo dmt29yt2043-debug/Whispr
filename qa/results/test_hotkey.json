@@ -1,0 +1,53 @@
+{
+  "script": "test_hotkey",
+  "results": [
+    {
+      "id": "TC_HK_HOLD",
+      "area": "hotkey",
+      "desc": "push-to-talk: hold \u2265 _MIN_HOLD \u2192 start + stop on release",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_HK_SINGLE_TAP",
+      "area": "hotkey",
+      "desc": "single short tap \u2192 start + stop after double-tap timeout",
+      "status": "PASS",
+      "ms": 459,
+      "error": null
+    },
+    {
+      "id": "TC_HK_DOUBLE_TAP",
+      "area": "hotkey",
+      "desc": "double-tap: two short taps \u2192 toggle mode, recording stays on",
+      "status": "PASS",
+      "ms": 655,
+      "error": null
+    },
+    {
+      "id": "TC_HK_TOGGLE_STOP",
+      "area": "hotkey",
+      "desc": "in toggle mode, next press stops recording",
+      "status": "PASS",
+      "ms": 559,
+      "error": null
+    },
+    {
+      "id": "TC_HK_RESET_CANCELS_TIMER",
+      "area": "hotkey",
+      "desc": "reset_state() cancels pending double-tap timer",
+      "status": "PASS",
+      "ms": 653,
+      "error": null
+    },
+    {
+      "id": "TC_HK_DEBOUNCE",
+      "area": "hotkey",
+      "desc": "rapid repeated press without release is debounced",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    }
+  ]
+}

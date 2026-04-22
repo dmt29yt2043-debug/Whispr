@@ -171,7 +171,9 @@ class Recorder:
             return None
 
         duration = len(audio) / SAMPLE_RATE
-        if duration < 0.15:
+        if duration < 0.4:
+            # Too short to contain real speech — ignore accidental presses.
+            log.info("Recording too short (%.2fs < 0.4s) — ignored", duration)
             return None
 
         # Check audio amplitude. If the recording is silent, short-circuit

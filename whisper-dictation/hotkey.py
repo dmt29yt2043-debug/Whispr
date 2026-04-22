@@ -72,8 +72,12 @@ _KEYCODE_F18 = 79
 _KEYCODE_F19 = 80
 
 # ── Timing ───────────────────────────────────────────────────────────
-_DOUBLE_TAP_WINDOW = 0.35
-_MIN_HOLD = 0.08
+# A release faster than this is a "tap" → starts double-tap timer.
+# A release >= this is push-to-talk → stop immediately (no waiting).
+_MIN_HOLD = 0.20
+
+# After a short tap, wait this long for a second tap before giving up.
+_DOUBLE_TAP_WINDOW = 0.45
 
 
 def _hotkey_spec(name: str) -> Tuple[str, int, int]:
@@ -116,19 +120,23 @@ class FnKeyHandler:
         self._on_start = on_start
         self._on_stop = on_stop
 
-        # Lock around state-machine fields. CGEventTap callback (main run
-        # loop) and cancel worker thread can both mutate these — without
-        # a lock we saw torn state ('recording=False but _key_down=True'
-        # → next release dropped, key appears dead).
+        # Lock around all state-machine fields. CGEventTap callback (main
+        # run loop) and timer threads both mutate these.
         self._state_lock = threading.Lock()
 
         self._key_down = False
         self._key_down_time = 0.0
-        self._last_tap_time = 0.0
         self._last_press_time = 0.0
         self._last_release_time = 0.0
-        self._toggle_mode = False
+
+        # Toggle mode state
+        self._toggle_mode = False        # True = recording started by double-tap
         self._recording = False
+
+        # Double-tap detection: after a short tap we wait _DOUBLE_TAP_WINDOW
+        # for a second tap before deciding "no double-tap, just stop".
+        self._waiting_for_second_tap = False
+        self._double_tap_timer: Optional[threading.Timer] = None
 
         # Strong references to native objects
         self._tap = None
@@ -151,6 +159,11 @@ class FnKeyHandler:
     def reset_state(self) -> None:
         """Thread-safe reset of the state machine. Called by Escape cancel."""
         with self._state_lock:
+            # Cancel any pending double-tap timer
+            if self._double_tap_timer is not None:
+                self._double_tap_timer.cancel()
+                self._double_tap_timer = None
+            self._waiting_for_second_tap = False
             self._key_down = False
             self._recording = False
             self._toggle_mode = False
@@ -295,62 +308,97 @@ class FnKeyHandler:
             return event
 
     # ── State machine ────────────────────────────────────────────────
+    #
+    # Two recording modes:
+    #
+    #   Push-to-talk  — hold the key while speaking, release to transcribe.
+    #                   Any release >= _MIN_HOLD (0.20s) triggers this.
+    #
+    #   Toggle mode   — double-tap: tap once (< 0.20s) to start, tap again
+    #                   to stop.  After the first quick tap we wait up to
+    #                   _DOUBLE_TAP_WINDOW (0.45s) for a second tap.
+    #                   If it arrives → toggle mode (recording stays on).
+    #                   If the timer fires (no second tap) → stop.
 
     def _on_press(self, now: float) -> None:
-        # Debounce + state update under lock
+        start_recording = False
         with self._state_lock:
+            # ── Second tap of a double-tap? ──────────────────────────
+            if self._waiting_for_second_tap:
+                # Cancel the "give up" timer — the second tap arrived.
+                if self._double_tap_timer is not None:
+                    self._double_tap_timer.cancel()
+                    self._double_tap_timer = None
+                self._waiting_for_second_tap = False
+                self._toggle_mode = True
+                self._last_press_time = now
+                log.info("Double-tap → toggle mode ON (recording continues)")
+                return  # Recording is already running from first tap
+
+            # ── Toggle mode: press stops recording ───────────────────
+            if self._toggle_mode and self._recording:
+                self._toggle_mode = False
+                self._recording = False
+                self._last_press_time = now
+                log.info("Press → stop (toggle mode)")
+                self._call_safe(self._on_stop)
+                return
+
+            # ── Debounce (not applied when waiting for second tap) ───
             last_event = max(self._last_press_time, self._last_release_time)
             if last_event and (now - last_event) < 0.20:
                 log.info("Debounced rapid press (%.3fs since last event)", now - last_event)
                 return
+
+            # ── Normal start ─────────────────────────────────────────
             self._last_press_time = now
-
-            # Toggle mode: currently recording -> stop
-            if self._toggle_mode and self._recording:
-                self._toggle_mode = False
-                self._recording = False
-                log.info("Press -> stop (toggle mode)")
-                self._call_safe(self._on_stop)
-                return
-
             self._recording = True
             self._toggle_mode = False
+            start_recording = True
 
-        log.info("Press -> start recording")
-        self._call_safe(self._on_start)
+        if start_recording:
+            log.info("Press → start recording")
+            self._call_safe(self._on_start)
 
     def _on_release(self, now: float, hold: float) -> None:
-        fire_stop = False
-
         with self._state_lock:
             self._last_release_time = now
 
-            if self._toggle_mode:
-                return
-
             if not self._recording:
-                self._last_tap_time = now
-                return
+                return  # Already stopped
 
-            if hold < _MIN_HOLD:
-                time_since_last_tap = now - self._last_tap_time
-                if time_since_last_tap < _DOUBLE_TAP_WINDOW:
-                    self._toggle_mode = True
-                    log.info("Double-tap -> toggle mode ON")
-                    self._last_tap_time = 0.0
-                else:
-                    self._recording = False
-                    self._last_tap_time = now
-                    fire_stop = True
-                    stop_reason = "Short tap -> cancel"
-            else:
+            if self._toggle_mode:
+                return  # Toggle mode: only a press can stop
+
+            if hold >= _MIN_HOLD:
+                # ── Push-to-talk: stop immediately ───────────────────
                 self._recording = False
-                self._last_tap_time = now
-                fire_stop = True
-                stop_reason = "Release -> stop (hold %.2fs)" % hold
+                log.info("Release → stop (push-to-talk, hold=%.2fs)", hold)
+                self._call_safe(self._on_stop)
+            else:
+                # ── Short tap: wait to see if a second tap follows ───
+                self._waiting_for_second_tap = True
+                timer = threading.Timer(_DOUBLE_TAP_WINDOW, self._double_tap_timeout)
+                self._double_tap_timer = timer
+                log.info(
+                    "Short tap (hold=%.2fs) → waiting %.2fs for second tap",
+                    hold, _DOUBLE_TAP_WINDOW,
+                )
+                timer.start()
 
-        if fire_stop:
-            log.info(stop_reason)
+    def _double_tap_timeout(self) -> None:
+        """Timer fired — no second tap came → stop the recording."""
+        should_stop = False
+        with self._state_lock:
+            self._double_tap_timer = None
+            if not self._waiting_for_second_tap or not self._recording:
+                return
+            self._waiting_for_second_tap = False
+            self._recording = False
+            should_stop = True
+
+        if should_stop:
+            log.info("Double-tap window expired → stopping (single tap)")
             self._call_safe(self._on_stop)
 
     def _call_safe(self, fn: Callable) -> None:

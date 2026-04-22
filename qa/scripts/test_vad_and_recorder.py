@@ -108,7 +108,7 @@ def test_serialized():
     r.start()
     time.sleep(0.05)
     path = r.stop()
-    assert path is None  # too short (<0.15s) OR silent
+    assert path is None  # too short (<0.4s) OR silent
     # Second cycle works too
     r.start()
     time.sleep(0.05)
@@ -119,7 +119,7 @@ def test_serialized():
         os.unlink(path2)
 
 
-@case("TC_011", "recorder", "recording <0.15s → returns None, no orphan WAV")
+@case("TC_011", "recorder", "recording <0.4s → returns None, no orphan WAV")
 def test_too_short_returns_none():
     r = Recorder(force_builtin=False)
     r.start()

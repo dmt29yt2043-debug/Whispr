@@ -26,7 +26,9 @@ _PROMPT_ECHO_SNIPPETS = (
     "русская речь. hello world",
     "привет мир. готово. done",
     "hello world. привет мир",
-    # Newer vocab-hint prompt (streaming)
+    # Streaming prompt — gpt-4o-mini-transcribe echoes this on silent audio
+    "english or russian",
+    # Older vocab-hint prompts
     "hello. done. привет",
     "привет. вроде. заработало",
     "вроде. заработало. готово",

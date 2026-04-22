@@ -29,14 +29,19 @@ def test_sql_param():
 @case("TC_043", "security", "afplay fallback uses subprocess, no shell interpolation")
 def test_afplay_no_shell():
     import inspect, re
-    src = inspect.getsource(sounds._play_file)
-    # Look for actual os.system() function CALL (not a comment mention)
-    # Strip comments first to avoid false positive on our own documentation.
+    # Check the whole sounds module — any playback function must not use
+    # os.system() (shell injection risk) and must use subprocess list-args.
+    src = inspect.getsource(sounds)
+    # Strip comments/docstrings to avoid false positives from documentation.
     code_only = re.sub(r"#[^\n]*", "", src)
     assert not re.search(r"\bos\.system\s*\(", code_only), \
         "os.system(...) call present — shell injection risk"
-    # Also ensure subprocess is used for the fallback path
-    assert "subprocess" in src, "fallback path should use subprocess"
+    # The _afplay helper must exist and use subprocess.Popen with a list.
+    afplay_src = inspect.getsource(sounds._afplay)
+    assert "subprocess.Popen" in afplay_src, "_afplay should use subprocess.Popen"
+    # shell=True would be a red flag (shell interpolation on path)
+    assert "shell=True" not in afplay_src, \
+        "_afplay must not use shell=True (shell injection risk)"
 
 
 @case("TC_035", "security", "replacement value with HTML/script stored unchanged, no exec")
