@@ -64,10 +64,10 @@ def warmup_local_model() -> None:
         _get_local_model()
 
 
-# gpt-4o-mini-transcribe: newer, faster, cheaper than whisper-1 ($0.003/min vs $0.006/min).
-# Falls back to whisper-1 if the newer model errors out.
-_PRIMARY_MODEL = "gpt-4o-mini-transcribe"
-_FALLBACK_MODEL = "whisper-1"
+# gpt-4o-transcribe: better accuracy on Russian/mixed speech ($0.006/min).
+# Falls back to gpt-4o-mini-transcribe, then whisper-1 if errors out.
+_PRIMARY_MODEL = "gpt-4o-transcribe"
+_FALLBACK_MODEL = "gpt-4o-mini-transcribe"
 
 
 def _transcribe_api(audio_path: str) -> Optional[str]:

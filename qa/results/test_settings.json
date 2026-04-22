@@ -30,7 +30,7 @@
       "area": "settings",
       "desc": "get() returns deep copy of dict values",
       "status": "PASS",
-      "ms": 1,
+      "ms": 0,
       "error": null
     },
     {
@@ -38,7 +38,7 @@
       "area": "settings",
       "desc": "50 concurrent set() from 20 threads \u2014 no lost writes",
       "status": "PASS",
-      "ms": 12,
+      "ms": 15,
       "error": null
     },
     {
@@ -46,7 +46,7 @@
       "area": "settings",
       "desc": "settings file never in 0-byte state under concurrent writes",
       "status": "PASS",
-      "ms": 505,
+      "ms": 506,
       "error": null
     }
   ]

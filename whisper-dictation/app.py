@@ -299,7 +299,7 @@ class WhisperDictationApp(rumps.App):
         if S.get("use_streaming", False) and S.get("mode", S.MODE_AUTO) != S.MODE_LOCAL:
             try:
                 st = StreamingTranscriber()
-                if st.start_async(sample_rate=16000):
+                if st.start_async(sample_rate=24000):
                     self._streamer = st
                     self.recorder.set_chunk_callback(st.feed)
                     log.info("Streaming transcription enabled (connecting in background)")

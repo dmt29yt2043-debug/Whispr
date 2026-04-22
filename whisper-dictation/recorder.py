@@ -15,7 +15,7 @@ import soundfile as sf
 
 log = logging.getLogger(__name__)
 
-SAMPLE_RATE = 16000
+SAMPLE_RATE = 24000  # OpenAI Realtime API requires 24kHz for pcm16 format
 CHANNELS = 1
 
 # Keywords for built-in mic detection

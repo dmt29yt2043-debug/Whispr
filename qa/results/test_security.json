@@ -6,7 +6,7 @@
       "area": "security",
       "desc": "SQL injection attempt via model name is parameterized safely",
       "status": "PASS",
-      "ms": 3,
+      "ms": 5,
       "error": null
     },
     {
@@ -14,7 +14,7 @@
       "area": "security",
       "desc": "afplay fallback uses subprocess, no shell interpolation",
       "status": "PASS",
-      "ms": 1,
+      "ms": 2,
       "error": null
     },
     {
