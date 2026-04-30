@@ -15,7 +15,12 @@ import soundfile as sf
 
 log = logging.getLogger(__name__)
 
-SAMPLE_RATE = 24000  # OpenAI Realtime API requires 24kHz for pcm16 format
+# MacBook Air and most Mac mics only support 48kHz natively. We record at
+# 48kHz and downsample 2:1 → 24kHz for the OpenAI Realtime stream (which
+# requires 24kHz for pcm16). WAV files stay at 48kHz — batch transcription
+# accepts any sample rate.
+SAMPLE_RATE = 48000
+STREAM_SAMPLE_RATE = 24000
 CHANNELS = 1
 
 # Keywords for built-in mic detection
@@ -243,10 +248,17 @@ class Recorder:
                 pass
 
         # Forward PCM16 bytes to streaming transcriber if attached.
+        # Downsample 48kHz → 24kHz (2:1) for OpenAI Realtime API which
+        # requires 24kHz pcm16. Simple decimation is fine for speech —
+        # anti-alias filter not critical at this ratio for voice band.
         chunk_cb = self._chunk_callback
         if chunk_cb is not None:
             try:
-                pcm16 = (np.clip(arr, -1.0, 1.0) * 32767).astype(np.int16).tobytes()
+                if SAMPLE_RATE == 2 * STREAM_SAMPLE_RATE:
+                    down = arr[::2] if arr.ndim == 1 else arr[::2, 0]
+                else:
+                    down = arr.flatten() if arr.ndim > 1 else arr
+                pcm16 = (np.clip(down, -1.0, 1.0) * 32767).astype(np.int16).tobytes()
                 chunk_cb(pcm16)
             except Exception as e:
                 # Swallow to keep the CoreAudio callback alive; streaming

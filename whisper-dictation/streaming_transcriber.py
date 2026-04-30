@@ -121,9 +121,12 @@ class StreamingTranscriber:
             )
             ws.settimeout(None)
 
-            # Bilingual prompt helps the model on Russian words — accuracy
-            # dropped noticeably without it. anti_hallucination.py catches
-            # the rare silent-audio echo via dominant-substring detection.
+            # server_vad turn_detection is REQUIRED for multi-phrase audio.
+            # With turn_detection=null, the API processes only the first
+            # utterance up to a pause and ignores everything after commit —
+            # net effect: long recordings came back as 1-sentence transcripts.
+            # server_vad splits on detected silence → we get one `completed`
+            # event per phrase, and commit_and_wait accumulates them all.
             config = {
                 "type": "transcription_session.update",
                 "session": {
@@ -132,7 +135,12 @@ class StreamingTranscriber:
                         "model": _TRANSCRIBE_MODEL,
                         "prompt": "Russian and English speech. Русская и английская речь.",
                     },
-                    "turn_detection": None,
+                    "turn_detection": {
+                        "type": "server_vad",
+                        "threshold": 0.5,
+                        "prefix_padding_ms": 300,
+                        "silence_duration_ms": 500,
+                    },
                 },
             }
             # Session-config must also go through the send_lock
@@ -235,44 +243,61 @@ class StreamingTranscriber:
                 log.warning("Realtime WS commit failed: %s", e)
                 self._closed = True
 
-    def commit_and_wait(self, timeout: float = 3.0) -> Optional[str]:
-        """Commit the audio buffer and wait for the final transcript."""
+    def commit_and_wait(self, timeout: float = 8.0) -> Optional[str]:
+        """Commit the audio buffer and wait for the final transcript.
+
+        With server_vad, the API emits one completed event per detected
+        phrase. _handle_event accumulates them into _final_text as they
+        arrive during recording. When the user releases the key:
+          1. We clear _final_event so stale state doesn't trigger early return
+          2. Send commit (flushes the pending tail audio as final segment)
+          3. Wait up to `timeout` for the server to finish the final segment
+          4. Poll 700ms for any extra segments, then return accumulated text
+        Returns whatever was accumulated (possibly partial) rather than None
+        on timeout — a partial result is better than nothing.
+        """
         if self._closed:
-            return None
+            return self._final_text  # may be None if nothing received
 
         with self._lock:
             ws = self._ws
             if ws is None:
-                # WebSocket didn't open yet. Mark commit pending; the
-                # connection thread will send commit as soon as it's ready.
                 self._pending_commit = True
 
-        # Wait for WS to become ready (bounded) — then flush remainder + commit
-        # if we haven't already pushed it from the connect thread.
+        # Wait for WS to become ready (bounded)
         self._ready.wait(timeout=min(timeout, 2.0))
 
         with self._lock:
             ws = self._ws
             sent_pending = self._pending_commit and ws is not None
-        if ws is not None and not sent_pending:
-            # Flush the last partial batch (may be <100ms) and commit
-            # atomically under the send_lock so nothing interleaves.
+
+        if ws is None:
+            # Connection never opened — return whatever we have
+            return self._final_text
+
+        if not sent_pending:
+            # CRITICAL: clear _final_event BEFORE commit, otherwise
+            # _final_event is already set from prior server_vad segments
+            # received during recording, and the wait() below returns
+            # instantly — we'd miss the final segment triggered by our
+            # manual commit.
+            self._final_event.clear()
             self._flush_remainder_and_commit(ws)
             if self._closed:
-                return None
+                return self._final_text
 
+        # Wait for the post-commit transcript event
         if not self._final_event.wait(timeout=timeout):
-            log.warning("Realtime WS commit timeout (%.1fs)", timeout)
-            return None
+            log.info("No post-commit transcript within %.1fs — returning accumulated text (%d chars)",
+                     timeout, len(self._final_text or ""))
+            return self._final_text
 
-        # After first completed event, poll briefly for additional segments.
-        # OpenAI sometimes splits long audio into multiple transcription
-        # items — without this loop we'd drop everything after the first.
+        # Poll for additional segments (server can emit several)
         while True:
             with self._lock:
                 self._final_event.clear()
-            if not self._final_event.wait(timeout=0.4):
-                break  # No more segments within 400ms — assume done
+            if not self._final_event.wait(timeout=0.7):
+                break
             log.info("Additional transcript segment received, continuing to wait")
 
         return self._final_text

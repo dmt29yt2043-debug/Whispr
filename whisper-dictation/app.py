@@ -380,36 +380,61 @@ class WhisperDictationApp(rumps.App):
             # commit and wait briefly for the final transcript. On timeout
             # or error, silently fall back to batch using the same audio.
             raw_text = None
+            streamed_duration = 0.0
+            # Streaming is ONLY trustworthy for short recordings. Longer
+            # ones hit known Realtime API issues: server_vad can miss
+            # final segment after the last speech_started, and manual
+            # commit with turn_detection=null truncates multi-phrase audio.
+            # For >_STREAMING_MAX_SECONDS we always use batch.
+            _STREAMING_MAX_SECONDS = 8.0
+            try:
+                from transcriber import _audio_duration_seconds
+                audio_duration = _audio_duration_seconds(audio_path)
+            except Exception:
+                audio_duration = 0.0
+
             streamer = getattr(self, "_streamer", None)
-            if streamer is not None:
+            if streamer is not None and 0 < audio_duration <= _STREAMING_MAX_SECONDS:
                 try:
-                    streamed = streamer.commit_and_wait(timeout=3.0)
+                    streamed = streamer.commit_and_wait(timeout=6.0)
                     if streamed:
                         from anti_hallucination import filter_transcription
                         raw_text = filter_transcription(streamed)
                         if raw_text:
-                            log.info("Streaming transcription succeeded (%d chars)", len(raw_text))
-                            # Record usage under streaming model in stats
-                            try:
-                                import stats as _stats
-                                from transcriber import _audio_duration_seconds
-                                dur = _audio_duration_seconds(audio_path)
-                                if dur > 0:
-                                    _stats.record_transcribe("gpt-4o-mini-transcribe", dur)
-                            except Exception:
-                                pass
+                            chars_per_sec = len(raw_text) / audio_duration
+                            if chars_per_sec < 3.0:
+                                # Still suspicious even for short audio — batch it
+                                log.warning(
+                                    "Streaming gave %d chars for %.2fs (%.1f c/s) — "
+                                    "likely truncated, falling back to batch",
+                                    len(raw_text), audio_duration, chars_per_sec,
+                                )
+                                raw_text = None
+                            else:
+                                streamed_duration = audio_duration
+                                log.info("Streaming transcription succeeded (%d chars for %.1fs)",
+                                         len(raw_text), audio_duration)
+                                try:
+                                    import stats as _stats
+                                    _stats.record_transcribe(
+                                        "gpt-4o-mini-transcribe", audio_duration)
+                                except Exception:
+                                    pass
                 except Exception as e:
                     log.warning("Streaming commit failed, falling back to batch: %s", e)
-                finally:
-                    # Close in background — the TCP close handshake can
-                    # take 1-2s and we don't need to wait for it before
-                    # injecting the text.
-                    _s = streamer
-                    threading.Thread(
-                        target=lambda: (_s.close() if _s else None),
-                        daemon=True,
-                    ).start()
-                    self._streamer = None
+            elif streamer is not None:
+                log.info("Audio %.1fs > %.1fs — skipping streaming, using batch for accuracy",
+                         audio_duration, _STREAMING_MAX_SECONDS)
+
+            # Close any streaming session in background (both paths) — the
+            # TCP close handshake can take 1-2s and we don't need to wait.
+            if streamer is not None:
+                _s = streamer
+                threading.Thread(
+                    target=lambda: (_s.close() if _s else None),
+                    daemon=True,
+                ).start()
+                self._streamer = None
 
             # Step 2: VAD (best-effort) — only if not already transcribed via streaming
             if raw_text is None and S.get("vad_enabled", True):

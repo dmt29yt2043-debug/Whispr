@@ -234,7 +234,7 @@
         "area": "hotkey",
         "desc": "single short tap \u2192 start + stop after double-tap timeout",
         "status": "PASS",
-        "ms": 456,
+        "ms": 455,
         "error": null
       },
       {
@@ -250,7 +250,7 @@
         "area": "hotkey",
         "desc": "in toggle mode, next press stops recording",
         "status": "PASS",
-        "ms": 550,
+        "ms": 554,
         "error": null
       },
       {
@@ -284,7 +284,7 @@
         "area": "injector",
         "desc": "whitespace-only text returns 'skipped'",
         "status": "PASS",
-        "ms": 143,
+        "ms": 129,
         "error": null
       },
       {
@@ -292,7 +292,7 @@
         "area": "injector",
         "desc": "no text focus \u2192 returns 'copied', clipboard set, no paste",
         "status": "PASS",
-        "ms": 55,
+        "ms": 56,
         "error": null
       },
       {
@@ -316,7 +316,7 @@
         "area": "injector",
         "desc": "clipboard restore: skipped when user changes clipboard during wait",
         "status": "PASS",
-        "ms": 968,
+        "ms": 966,
         "error": null
       },
       {
@@ -340,7 +340,7 @@
         "area": "injector",
         "desc": "set_last_transcription + repaste_last round-trip",
         "status": "PASS",
-        "ms": 56,
+        "ms": 54,
         "error": null
       },
       {
@@ -358,7 +358,7 @@
         "area": "performance",
         "desc": "10 threads \u00d7 100 stats writes \u2014 latency p95 <50ms",
         "status": "PASS",
-        "ms": 412,
+        "ms": 599,
         "error": null
       },
       {
@@ -366,7 +366,7 @@
         "area": "performance",
         "desc": "20 threads \u00d7 50 settings writes \u2014 no lost writes, fast",
         "status": "PASS",
-        "ms": 641,
+        "ms": 633,
         "error": null
       },
       {
@@ -374,7 +374,7 @@
         "area": "performance",
         "desc": "anti-hallucination filter on 10,000 inputs < 1s",
         "status": "PASS",
-        "ms": 33,
+        "ms": 31,
         "error": null
       }
     ],
@@ -450,7 +450,7 @@
         "area": "security",
         "desc": "SQL injection attempt via model name is parameterized safely",
         "status": "PASS",
-        "ms": 5,
+        "ms": 3,
         "error": null
       },
       {
@@ -458,7 +458,7 @@
         "area": "security",
         "desc": "afplay fallback uses subprocess, no shell interpolation",
         "status": "PASS",
-        "ms": 2,
+        "ms": 1,
         "error": null
       },
       {
@@ -540,7 +540,7 @@
         "area": "settings",
         "desc": "50 concurrent set() from 20 threads \u2014 no lost writes",
         "status": "PASS",
-        "ms": 15,
+        "ms": 12,
         "error": null
       },
       {
@@ -548,7 +548,7 @@
         "area": "settings",
         "desc": "settings file never in 0-byte state under concurrent writes",
         "status": "PASS",
-        "ms": 506,
+        "ms": 503,
         "error": null
       }
     ],
@@ -558,7 +558,7 @@
         "area": "stats",
         "desc": "record_transcribe increments by_model correctly",
         "status": "PASS",
-        "ms": 4,
+        "ms": 3,
         "error": null
       },
       {
@@ -566,7 +566,7 @@
         "area": "stats",
         "desc": "paid_seconds excludes local, local_seconds separated",
         "status": "PASS",
-        "ms": 2,
+        "ms": 1,
         "error": null
       },
       {
@@ -582,7 +582,7 @@
         "area": "stats",
         "desc": "10 threads \u00d7 100 increments \u2014 no lost writes",
         "status": "PASS",
-        "ms": 505,
+        "ms": 434,
         "error": null
       },
       {
@@ -590,7 +590,7 @@
         "area": "stats",
         "desc": "SQL-injection-like model name handled via parameterized query",
         "status": "PASS",
-        "ms": 1,
+        "ms": 2,
         "error": null
       },
       {
@@ -606,7 +606,7 @@
         "area": "stats",
         "desc": "empty text/zero seconds doesn't add rows",
         "status": "PASS",
-        "ms": 1,
+        "ms": 0,
         "error": null
       }
     ],
@@ -616,7 +616,7 @@
         "area": "vad",
         "desc": "pure silence \u2192 None (no speech)",
         "status": "PASS",
-        "ms": 1,
+        "ms": 2,
         "error": null
       },
       {
@@ -632,7 +632,7 @@
         "area": "vad",
         "desc": "<0.3s audio bypasses VAD, returns original",
         "status": "PASS",
-        "ms": 16,
+        "ms": 51,
         "error": null
       },
       {
@@ -664,7 +664,7 @@
         "area": "recorder",
         "desc": "start/stop serialized via _op_lock; rapid calls do not race",
         "status": "PASS",
-        "ms": 639,
+        "ms": 697,
         "error": null
       },
       {
@@ -672,7 +672,7 @@
         "area": "recorder",
         "desc": "recording <0.4s \u2192 returns None, no orphan WAV",
         "status": "PASS",
-        "ms": 305,
+        "ms": 300,
         "error": null
       }
     ]
