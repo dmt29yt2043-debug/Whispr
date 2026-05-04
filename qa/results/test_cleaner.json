@@ -22,7 +22,7 @@
       "area": "cleaner",
       "desc": "speech with fillers triggers GPT call",
       "status": "PASS",
-      "ms": 3,
+      "ms": 10,
       "error": null
     },
     {
@@ -30,7 +30,7 @@
       "area": "cleaner",
       "desc": "GPT returns None content \u2192 falls back to raw",
       "status": "PASS",
-      "ms": 0,
+      "ms": 1,
       "error": null
     },
     {
@@ -46,7 +46,7 @@
       "area": "cleaner",
       "desc": "tone=raw always skips GPT",
       "status": "PASS",
-      "ms": 0,
+      "ms": 1,
       "error": null
     },
     {

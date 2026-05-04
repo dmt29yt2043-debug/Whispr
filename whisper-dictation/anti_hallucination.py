@@ -67,6 +67,38 @@ _UNSUPPORTED_SCRIPT = re.compile(
     "]"
 )
 
+# Single-word outputs that Whisper hallucinates on near-silent / sub-1s
+# audio. Matched as EXACT text only (after lowering & stripping trailing
+# punctuation) so legitimate dictations like "Hello, Maria!" or "Yes, I
+# agree" still pass — only standalone "Hello" / "Hi" / "Ari" gets dropped.
+# These were observed in production logs on accidental short button taps.
+_SHORT_GREETING_HALLUCINATIONS = frozenset({
+    "hello",
+    "hi",
+    "hey",
+    "bye",
+    "yeah",
+    "yep",
+    "ok",
+    "okay",
+    "ari",
+    "uh",
+    "um",
+    "mm",
+    "hmm",
+    "you",
+    "thanks",
+    "thank you",
+    "cool",
+    "right",
+    "привет",
+    "пока",
+    "ага",
+    "угу",
+    "да",
+    "нет",
+})
+
 # Common Whisper hallucination phrases (case-insensitive substring match).
 # These are things Whisper generates on silent / low-energy audio.
 _HALLUCINATION_PHRASES = (
@@ -104,6 +136,10 @@ def _strip_brackets(text: str) -> str:
 def _is_phrase_hallucination(text: str) -> bool:
     """Check if text is entirely a known hallucination phrase."""
     lowered = text.strip().lower().rstrip(".!?,")
+    # Standalone short greetings ("Hello", "Hi", "Bye") on near-silent audio.
+    # Only reject if it's the WHOLE output — "Hello, Maria!" is fine.
+    if lowered in _SHORT_GREETING_HALLUCINATIONS:
+        return True
     for phrase in _HALLUCINATION_PHRASES:
         # If text is exactly the phrase or very close to it
         if lowered == phrase:

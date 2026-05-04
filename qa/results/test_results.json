@@ -152,6 +152,30 @@
         "status": "PASS",
         "ms": 0,
         "error": null
+      },
+      {
+        "id": "TC_HALLUC_HELLO_ALONE",
+        "area": "anti_hallucination",
+        "desc": "standalone 'Hello' from silent press \u2192 rejected",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_HALLUC_HELLO_IN_CONTEXT",
+        "area": "anti_hallucination",
+        "desc": "'Hello, Maria!' (real greeting in context) preserved",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_HALLUC_RU_GREETING",
+        "area": "anti_hallucination",
+        "desc": "standalone Russian '\u041f\u0440\u0438\u0432\u0435\u0442' / '\u0414\u0430' rejected",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
       }
     ],
     "test_cleaner": [
@@ -176,7 +200,7 @@
         "area": "cleaner",
         "desc": "speech with fillers triggers GPT call",
         "status": "PASS",
-        "ms": 3,
+        "ms": 10,
         "error": null
       },
       {
@@ -184,7 +208,7 @@
         "area": "cleaner",
         "desc": "GPT returns None content \u2192 falls back to raw",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -200,7 +224,7 @@
         "area": "cleaner",
         "desc": "tone=raw always skips GPT",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -226,7 +250,7 @@
         "area": "hotkey",
         "desc": "push-to-talk: hold \u2265 _MIN_HOLD \u2192 start + stop on release",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -234,7 +258,7 @@
         "area": "hotkey",
         "desc": "single short tap \u2192 start + stop after double-tap timeout",
         "status": "PASS",
-        "ms": 455,
+        "ms": 457,
         "error": null
       },
       {
@@ -250,7 +274,7 @@
         "area": "hotkey",
         "desc": "in toggle mode, next press stops recording",
         "status": "PASS",
-        "ms": 554,
+        "ms": 555,
         "error": null
       },
       {
@@ -276,7 +300,7 @@
         "area": "injector",
         "desc": "empty text returns 'skipped', doesn't touch clipboard",
         "status": "PASS",
-        "ms": 59,
+        "ms": 61,
         "error": null
       },
       {
@@ -284,7 +308,7 @@
         "area": "injector",
         "desc": "whitespace-only text returns 'skipped'",
         "status": "PASS",
-        "ms": 129,
+        "ms": 170,
         "error": null
       },
       {
@@ -292,7 +316,7 @@
         "area": "injector",
         "desc": "no text focus \u2192 returns 'copied', clipboard set, no paste",
         "status": "PASS",
-        "ms": 56,
+        "ms": 57,
         "error": null
       },
       {
@@ -300,7 +324,7 @@
         "area": "injector",
         "desc": "text focus \u2192 returns 'pasted', fires Cmd+V",
         "status": "PASS",
-        "ms": 56,
+        "ms": 57,
         "error": null
       },
       {
@@ -308,7 +332,7 @@
         "area": "injector",
         "desc": "clipboard verification: waits for clipboard to settle before paste",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -316,7 +340,7 @@
         "area": "injector",
         "desc": "clipboard restore: skipped when user changes clipboard during wait",
         "status": "PASS",
-        "ms": 966,
+        "ms": 964,
         "error": null
       },
       {
@@ -324,7 +348,7 @@
         "area": "injector",
         "desc": "clipboard restore: restores when clipboard still ours",
         "status": "PASS",
-        "ms": 960,
+        "ms": 962,
         "error": null
       },
       {
@@ -340,7 +364,7 @@
         "area": "injector",
         "desc": "set_last_transcription + repaste_last round-trip",
         "status": "PASS",
-        "ms": 54,
+        "ms": 56,
         "error": null
       },
       {
@@ -358,7 +382,7 @@
         "area": "performance",
         "desc": "10 threads \u00d7 100 stats writes \u2014 latency p95 <50ms",
         "status": "PASS",
-        "ms": 599,
+        "ms": 1368,
         "error": null
       },
       {
@@ -366,7 +390,7 @@
         "area": "performance",
         "desc": "20 threads \u00d7 50 settings writes \u2014 no lost writes, fast",
         "status": "PASS",
-        "ms": 633,
+        "ms": 1595,
         "error": null
       },
       {
@@ -374,7 +398,7 @@
         "area": "performance",
         "desc": "anti-hallucination filter on 10,000 inputs < 1s",
         "status": "PASS",
-        "ms": 31,
+        "ms": 73,
         "error": null
       }
     ],
@@ -450,7 +474,7 @@
         "area": "security",
         "desc": "SQL injection attempt via model name is parameterized safely",
         "status": "PASS",
-        "ms": 3,
+        "ms": 5,
         "error": null
       },
       {
@@ -458,7 +482,7 @@
         "area": "security",
         "desc": "afplay fallback uses subprocess, no shell interpolation",
         "status": "PASS",
-        "ms": 1,
+        "ms": 3,
         "error": null
       },
       {
@@ -516,7 +540,7 @@
         "area": "settings",
         "desc": "corrupted JSON \u2192 defaults, no crash",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -532,7 +556,7 @@
         "area": "settings",
         "desc": "get() returns deep copy of dict values",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -540,7 +564,7 @@
         "area": "settings",
         "desc": "50 concurrent set() from 20 threads \u2014 no lost writes",
         "status": "PASS",
-        "ms": 12,
+        "ms": 31,
         "error": null
       },
       {
@@ -548,7 +572,7 @@
         "area": "settings",
         "desc": "settings file never in 0-byte state under concurrent writes",
         "status": "PASS",
-        "ms": 503,
+        "ms": 509,
         "error": null
       }
     ],
@@ -558,7 +582,7 @@
         "area": "stats",
         "desc": "record_transcribe increments by_model correctly",
         "status": "PASS",
-        "ms": 3,
+        "ms": 7,
         "error": null
       },
       {
@@ -566,7 +590,7 @@
         "area": "stats",
         "desc": "paid_seconds excludes local, local_seconds separated",
         "status": "PASS",
-        "ms": 1,
+        "ms": 3,
         "error": null
       },
       {
@@ -574,7 +598,7 @@
         "area": "stats",
         "desc": "GPT token cost computed correctly",
         "status": "PASS",
-        "ms": 1,
+        "ms": 2,
         "error": null
       },
       {
@@ -582,7 +606,7 @@
         "area": "stats",
         "desc": "10 threads \u00d7 100 increments \u2014 no lost writes",
         "status": "PASS",
-        "ms": 434,
+        "ms": 870,
         "error": null
       },
       {
@@ -590,7 +614,7 @@
         "area": "stats",
         "desc": "SQL-injection-like model name handled via parameterized query",
         "status": "PASS",
-        "ms": 2,
+        "ms": 3,
         "error": null
       },
       {
@@ -598,13 +622,71 @@
         "area": "stats",
         "desc": "word count increments across dictations",
         "status": "PASS",
-        "ms": 1,
+        "ms": 2,
         "error": null
       },
       {
         "id": "TC_STATS_EMPTY_NO_RECORD",
         "area": "stats",
         "desc": "empty text/zero seconds doesn't add rows",
+        "status": "PASS",
+        "ms": 1,
+        "error": null
+      }
+    ],
+    "test_transcriber": [
+      {
+        "id": "TC_TRANSCRIBE_SHORT_OK",
+        "area": "transcriber",
+        "desc": "short audio (\u22648s) with realistic chars/sec \u2192 returns gpt-4o-transcribe result, no fallback",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_TRANSCRIBE_LONG_USES_WHISPER1",
+        "area": "transcriber",
+        "desc": "audio >8s skips gpt-4o-* entirely and goes straight to whisper-1",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_TRANSCRIBE_TRUNCATION_DETECTED",
+        "area": "transcriber",
+        "desc": "short audio where gpt-4o returns suspiciously few chars/sec \u2192 falls back through chain to whisper-1",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_TRANSCRIBE_VERY_SHORT_NO_TRUNCATION_CHECK",
+        "area": "transcriber",
+        "desc": "very short audio (<3s) bypasses chars/sec check \u2014 short replies are legit",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_TRANSCRIBE_LONG_WHISPER1_FAILS_FALLS_TO_MINI",
+        "area": "transcriber",
+        "desc": "if whisper-1 returns empty on long audio, falls back to gpt-4o-mini-transcribe",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_TRANSCRIBE_BOUNDARY_8S_USES_GPT4O",
+        "area": "transcriber",
+        "desc": "exactly 8.0s is NOT 'long' \u2192 uses gpt-4o-transcribe",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_TRANSCRIBE_REAL_15S_NO_TRUNCATION",
+        "area": "transcriber",
+        "desc": "regression: 15s audio that we logged returning 73 chars now goes to whisper-1",
         "status": "PASS",
         "ms": 0,
         "error": null
@@ -616,7 +698,7 @@
         "area": "vad",
         "desc": "pure silence \u2192 None (no speech)",
         "status": "PASS",
-        "ms": 2,
+        "ms": 3,
         "error": null
       },
       {
@@ -624,7 +706,7 @@
         "area": "vad",
         "desc": "tone + silence \u2192 returns trimmed WAV",
         "status": "PASS",
-        "ms": 1,
+        "ms": 2,
         "error": null
       },
       {
@@ -632,7 +714,7 @@
         "area": "vad",
         "desc": "<0.3s audio bypasses VAD, returns original",
         "status": "PASS",
-        "ms": 51,
+        "ms": 62,
         "error": null
       },
       {
@@ -640,7 +722,7 @@
         "area": "vad",
         "desc": "VAD failure on silent audio \u2192 None (pipeline will use raw)",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -664,7 +746,7 @@
         "area": "recorder",
         "desc": "start/stop serialized via _op_lock; rapid calls do not race",
         "status": "PASS",
-        "ms": 697,
+        "ms": 577,
         "error": null
       },
       {
@@ -672,15 +754,15 @@
         "area": "recorder",
         "desc": "recording <0.4s \u2192 returns None, no orphan WAV",
         "status": "PASS",
-        "ms": 300,
+        "ms": 246,
         "error": null
       }
     ]
   },
   "summary": {
-    "pass": 82,
+    "pass": 92,
     "fail": 0,
     "error": 0,
-    "total": 82
+    "total": 92
   }
 }

@@ -115,5 +115,34 @@ def test_prompt_echo_legacy():
     assert filter_transcription("Hello. Done. Привет.") == ""
 
 
+# ── Short-greeting hallucinations (silent button-press) ──────────────
+
+@case("TC_HALLUC_HELLO_ALONE", "anti_hallucination",
+      "standalone 'Hello' from silent press → rejected")
+def test_hello_alone():
+    assert filter_transcription("Hello") == ""
+    assert filter_transcription("Hello.") == ""
+    assert filter_transcription("Hi!") == ""
+    assert filter_transcription("Bye") == ""
+    assert filter_transcription("Ari!") == ""
+
+
+@case("TC_HALLUC_HELLO_IN_CONTEXT", "anti_hallucination",
+      "'Hello, Maria!' (real greeting in context) preserved")
+def test_hello_in_context():
+    out = filter_transcription("Hello, Maria!")
+    assert out == "Hello, Maria!", f"unexpectedly dropped: {out!r}"
+    out2 = filter_transcription("Hello, world. How are you?")
+    assert out2 == "Hello, world. How are you?", f"unexpectedly dropped: {out2!r}"
+
+
+@case("TC_HALLUC_RU_GREETING", "anti_hallucination",
+      "standalone Russian 'Привет' / 'Да' rejected")
+def test_ru_greeting_alone():
+    assert filter_transcription("Привет") == ""
+    assert filter_transcription("Да.") == ""
+    assert filter_transcription("Угу") == ""
+
+
 if __name__ == "__main__":
     run_all("test_anti_hallucination")

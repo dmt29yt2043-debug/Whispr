@@ -1,0 +1,61 @@
+{
+  "script": "test_transcriber",
+  "results": [
+    {
+      "id": "TC_TRANSCRIBE_SHORT_OK",
+      "area": "transcriber",
+      "desc": "short audio (\u22648s) with realistic chars/sec \u2192 returns gpt-4o-transcribe result, no fallback",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSCRIBE_LONG_USES_WHISPER1",
+      "area": "transcriber",
+      "desc": "audio >8s skips gpt-4o-* entirely and goes straight to whisper-1",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSCRIBE_TRUNCATION_DETECTED",
+      "area": "transcriber",
+      "desc": "short audio where gpt-4o returns suspiciously few chars/sec \u2192 falls back through chain to whisper-1",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSCRIBE_VERY_SHORT_NO_TRUNCATION_CHECK",
+      "area": "transcriber",
+      "desc": "very short audio (<3s) bypasses chars/sec check \u2014 short replies are legit",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSCRIBE_LONG_WHISPER1_FAILS_FALLS_TO_MINI",
+      "area": "transcriber",
+      "desc": "if whisper-1 returns empty on long audio, falls back to gpt-4o-mini-transcribe",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSCRIBE_BOUNDARY_8S_USES_GPT4O",
+      "area": "transcriber",
+      "desc": "exactly 8.0s is NOT 'long' \u2192 uses gpt-4o-transcribe",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSCRIBE_REAL_15S_NO_TRUNCATION",
+      "area": "transcriber",
+      "desc": "regression: 15s audio that we logged returning 73 chars now goes to whisper-1",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    }
+  ]
+}

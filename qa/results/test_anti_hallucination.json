@@ -152,6 +152,30 @@
       "status": "PASS",
       "ms": 0,
       "error": null
+    },
+    {
+      "id": "TC_HALLUC_HELLO_ALONE",
+      "area": "anti_hallucination",
+      "desc": "standalone 'Hello' from silent press \u2192 rejected",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_HALLUC_HELLO_IN_CONTEXT",
+      "area": "anti_hallucination",
+      "desc": "'Hello, Maria!' (real greeting in context) preserved",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_HALLUC_RU_GREETING",
+      "area": "anti_hallucination",
+      "desc": "standalone Russian '\u041f\u0440\u0438\u0432\u0435\u0442' / '\u0414\u0430' rejected",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
     }
   ]
 }

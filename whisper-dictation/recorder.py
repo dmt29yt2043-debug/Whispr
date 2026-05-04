@@ -201,6 +201,20 @@ class Recorder:
                 )
                 self._last_error = "mic_silent"
                 return None
+            # BUG FIX #32: short presses (< 2s) where the audio is just room
+            # tone — peak ~0.03, rms ~0.005 — make Whisper hallucinate single
+            # words like "Hello", "Ari!", "Bye" or non-Latin glyphs. Real
+            # speech in 2s typically produces rms > 0.01. Drop these silently
+            # rather than pasting garbage. Longer recordings (≥2s) skip this
+            # gate so a softly-whispered long sentence still goes through.
+            if duration < 2.0 and rms < 0.008 and peak < 0.06:
+                log.info(
+                    "Near-silent short press (%.2fs peak=%.3f rms=%.4f) — "
+                    "skipping to avoid hallucination",
+                    duration, peak, rms,
+                )
+                self._last_error = None
+                return None
             self._last_error = None
         except Exception:
             pass
