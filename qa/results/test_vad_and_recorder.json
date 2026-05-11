@@ -6,7 +6,7 @@
       "area": "vad",
       "desc": "pure silence \u2192 None (no speech)",
       "status": "PASS",
-      "ms": 3,
+      "ms": 7,
       "error": null
     },
     {
@@ -14,7 +14,7 @@
       "area": "vad",
       "desc": "tone + silence \u2192 returns trimmed WAV",
       "status": "PASS",
-      "ms": 2,
+      "ms": 6,
       "error": null
     },
     {
@@ -22,7 +22,7 @@
       "area": "vad",
       "desc": "<0.3s audio bypasses VAD, returns original",
       "status": "PASS",
-      "ms": 62,
+      "ms": 50,
       "error": null
     },
     {
@@ -30,7 +30,7 @@
       "area": "vad",
       "desc": "VAD failure on silent audio \u2192 None (pipeline will use raw)",
       "status": "PASS",
-      "ms": 1,
+      "ms": 2,
       "error": null
     },
     {
@@ -54,7 +54,7 @@
       "area": "recorder",
       "desc": "start/stop serialized via _op_lock; rapid calls do not race",
       "status": "PASS",
-      "ms": 577,
+      "ms": 683,
       "error": null
     },
     {
@@ -62,7 +62,55 @@
       "area": "recorder",
       "desc": "recording <0.4s \u2192 returns None, no orphan WAV",
       "status": "PASS",
-      "ms": 246,
+      "ms": 325,
+      "error": null
+    },
+    {
+      "id": "TC_REC_WAKE_FLAG",
+      "area": "recorder",
+      "desc": "mark_subsystem_dirty sets the dirty flag",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_REC_DIRTY_TRIGGERS_REINIT",
+      "area": "recorder",
+      "desc": "wake \u2192 reinit happens (either in async warm-up OR at start()); dirty flag is cleared by end of start()",
+      "status": "PASS",
+      "ms": 543,
+      "error": null
+    },
+    {
+      "id": "TC_REC_CLEAN_NO_REINIT",
+      "area": "recorder",
+      "desc": "start() without dirty flag does NOT call PortAudio reinit (cheap path)",
+      "status": "PASS",
+      "ms": 306,
+      "error": null
+    },
+    {
+      "id": "TC_REC_OPEN_RETRY_AFTER_FAILURE",
+      "area": "recorder",
+      "desc": "InputStream open failure \u2192 reinit + retry; second attempt succeeds",
+      "status": "PASS",
+      "ms": 105,
+      "error": null
+    },
+    {
+      "id": "TC_REC_OPEN_GIVES_UP_AFTER_RETRIES",
+      "area": "recorder",
+      "desc": "InputStream open fails on every attempt \u2192 returns None, no infinite loop",
+      "status": "PASS",
+      "ms": 210,
+      "error": null
+    },
+    {
+      "id": "TC_REC_SILENT_MARKS_DIRTY",
+      "area": "recorder",
+      "desc": "silent recording (peak=rms=0) marks subsystem dirty for self-healing on next attempt",
+      "status": "PASS",
+      "ms": 0,
       "error": null
     }
   ]

@@ -280,13 +280,32 @@ class StatusOverlay:
         self._epoch = 0
 
     def _active_screen(self):
-        """Pick the screen where the mouse cursor is.
+        """Pick the screen where the user is currently working.
 
-        Logic: the user clicks into a text field (mouse moved there),
-        THEN presses Fn. So the last known mouse position is where
-        they're working, and where the text will be pasted. Overlay
-        should appear on the same screen.
+        Priority:
+          1. Screen containing the frontmost app's main window.
+             The text is going to be pasted into that app, so the
+             overlay should appear on the same display.
+          2. Screen under the mouse cursor (fallback when window
+             coordinates can't be read — e.g. an unbound focus).
+          3. NSScreen.mainScreen() — final fallback.
+
+        Why not mouse-first: with multi-monitor setups, the mouse
+        often stays on a different screen than the one the user is
+        looking at. The frontmost app's window IS the user's focus.
         """
+        # 1. Try frontmost app's window via CGWindowList. No accessibility
+        # permission needed; works regardless of whether the user has
+        # moved the mouse since opening the window.
+        try:
+            screen = self._screen_for_frontmost_window()
+            if screen is not None:
+                return screen
+        except Exception as e:
+            # Not fatal — fall through to mouse-based logic.
+            pass
+
+        # 2. Mouse position fallback.
         try:
             from AppKit import NSEvent
             mouse = NSEvent.mouseLocation()
@@ -297,7 +316,83 @@ class StatusOverlay:
                     return screen
         except Exception:
             pass
+
+        # 3. Last resort.
         return NSScreen.mainScreen()
+
+    def _screen_for_frontmost_window(self):
+        """Return the NSScreen showing the frontmost app's largest window, or None.
+
+        Uses CGWindowList to enumerate on-screen windows owned by the
+        frontmost app (NSWorkspace.frontmostApplication.processIdentifier).
+        Picks the largest non-menubar window (filters by layer==0) — that's
+        almost always the main editing window where text will be pasted.
+
+        CGWindow coordinates are top-left origin in points; NSScreen frames
+        are bottom-left origin. We convert before comparing.
+        """
+        from AppKit import NSWorkspace
+        from Quartz import (
+            CGWindowListCopyWindowInfo,
+            kCGWindowListOptionOnScreenOnly,
+            kCGNullWindowID,
+        )
+
+        ws = NSWorkspace.sharedWorkspace()
+        front_app = ws.frontmostApplication()
+        if front_app is None:
+            return None
+        pid = front_app.processIdentifier()
+
+        windows = CGWindowListCopyWindowInfo(
+            kCGWindowListOptionOnScreenOnly, kCGNullWindowID,
+        ) or []
+
+        best = None
+        best_area = 0
+        for w in windows:
+            if w.get("kCGWindowOwnerPID") != pid:
+                continue
+            # Layer 0 = normal app windows. Higher layers are menubars,
+            # status items, system overlays — not what the user is
+            # editing in.
+            if w.get("kCGWindowLayer", 0) != 0:
+                continue
+            b = w.get("kCGWindowBounds")
+            if not b:
+                continue
+            width = float(b.get("Width", 0))
+            height = float(b.get("Height", 0))
+            area = width * height
+            # Skip tiny tooltip-ish windows.
+            if area < 10_000:
+                continue
+            if area > best_area:
+                best = b
+                best_area = area
+
+        if best is None:
+            return None
+
+        # CGWindow uses top-left origin in the "display" coordinate space
+        # where Y grows downward from the menu bar of the main screen.
+        # Compute window center in that space:
+        win_x = float(best["X"]) + float(best["Width"]) / 2.0
+        win_y_topdown = float(best["Y"]) + float(best["Height"]) / 2.0
+
+        # Find the screen containing that center. NSScreen frames use
+        # bottom-left origin, but the menu-bar reference screen height
+        # equals the main screen height; we convert per-screen.
+        main_h = NSScreen.mainScreen().frame().size.height
+        # Convert window center to Cocoa coords (bottom-up).
+        win_y = main_h - win_y_topdown
+
+        for screen in NSScreen.screens():
+            f = screen.frame()
+            if (f.origin.x <= win_x <= f.origin.x + f.size.width and
+                    f.origin.y <= win_y <= f.origin.y + f.size.height):
+                return screen
+        return None
 
     def _window_frame_for_screen(self, screen):
         """Compute top-right pill frame on the given screen."""

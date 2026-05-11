@@ -128,5 +128,158 @@ def test_too_short_returns_none():
     assert path is None
 
 
+# ── Wake-from-sleep PortAudio reinit ─────────────────────────────────
+
+@case("TC_REC_WAKE_FLAG", "recorder", "mark_subsystem_dirty sets the dirty flag")
+def test_wake_flag_set():
+    r = Recorder(force_builtin=False)
+    assert r._subsystem_dirty is False
+    r.mark_subsystem_dirty(reason="test")
+    assert r._subsystem_dirty is True
+
+
+@case("TC_REC_DIRTY_TRIGGERS_REINIT", "recorder",
+      "wake → reinit happens (either in async warm-up OR at start()); dirty flag is cleared by end of start()")
+def test_dirty_triggers_reinit():
+    """Two paths can clear the dirty flag:
+      (a) The background warm-up after mark_subsystem_dirty succeeds in
+          opening a probe stream — clears the flag itself.
+      (b) Warm-up fails (no real device in CI), flag stays set, then
+          _start_locked reinits and clears the flag.
+    Either way, PortAudio MUST get reinit'd before recording starts,
+    and the flag MUST be False by the time start() returns.
+    """
+    r = Recorder(force_builtin=False)
+
+    reinit_calls = []
+    orig = Recorder._reinit_portaudio
+    Recorder._reinit_portaudio = staticmethod(lambda: reinit_calls.append(1))
+    try:
+        r.mark_subsystem_dirty(reason="test")
+        # Give the async warm-up a moment to run.
+        time.sleep(0.2)
+        r.start()
+        time.sleep(0.02)
+        r.stop()
+    finally:
+        Recorder._reinit_portaudio = orig
+
+    assert len(reinit_calls) >= 1, (
+        f"reinit must fire at least once after wake, got {len(reinit_calls)}"
+    )
+    assert r._subsystem_dirty is False, "dirty flag must be cleared after start"
+
+
+@case("TC_REC_CLEAN_NO_REINIT", "recorder",
+      "start() without dirty flag does NOT call PortAudio reinit (cheap path)")
+def test_clean_skips_reinit():
+    r = Recorder(force_builtin=False)
+    assert r._subsystem_dirty is False
+
+    reinit_calls = []
+    orig = Recorder._reinit_portaudio
+    Recorder._reinit_portaudio = staticmethod(lambda: reinit_calls.append(1))
+    try:
+        r.start()
+        time.sleep(0.02)
+        r.stop()
+    finally:
+        Recorder._reinit_portaudio = orig
+
+    assert reinit_calls == [], "reinit should NOT fire on clean start"
+
+
+@case("TC_REC_OPEN_RETRY_AFTER_FAILURE", "recorder",
+      "InputStream open failure → reinit + retry; second attempt succeeds")
+def test_open_retry_after_failure():
+    """Simulates the classic post-wake -9986 error on the first open
+    and a successful retry on the second. Without this, the user has
+    to relaunch the app — see _open_input_with_retry in recorder.py."""
+    import sounddevice as sd
+    r = Recorder(force_builtin=False)
+
+    attempts = {"n": 0}
+    reinit_calls = []
+
+    class _FakeStream:
+        def start(self): pass
+        def stop(self): pass
+        def close(self): pass
+
+    def fake_inputstream(**kwargs):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise sd.PortAudioError("Internal PortAudio error [PaErrorCode -9986]")
+        return _FakeStream()
+
+    orig_input = sd.InputStream
+    orig_reinit = Recorder._reinit_portaudio
+    sd.InputStream = fake_inputstream
+    Recorder._reinit_portaudio = staticmethod(lambda: reinit_calls.append(1))
+    try:
+        stream = r._open_input_with_retry(device=None, max_retries=2)
+    finally:
+        sd.InputStream = orig_input
+        Recorder._reinit_portaudio = orig_reinit
+
+    assert stream is not None, "second attempt should have succeeded"
+    assert attempts["n"] == 2, f"expected 2 InputStream attempts, got {attempts['n']}"
+    assert len(reinit_calls) == 1, (
+        f"reinit should be called once between attempts, got {len(reinit_calls)}"
+    )
+
+
+@case("TC_REC_OPEN_GIVES_UP_AFTER_RETRIES", "recorder",
+      "InputStream open fails on every attempt → returns None, no infinite loop")
+def test_open_gives_up():
+    import sounddevice as sd
+    r = Recorder(force_builtin=False)
+
+    attempts = {"n": 0}
+
+    def always_fail(**kwargs):
+        attempts["n"] += 1
+        raise sd.PortAudioError("Internal PortAudio error [PaErrorCode -9986]")
+
+    orig_input = sd.InputStream
+    orig_reinit = Recorder._reinit_portaudio
+    sd.InputStream = always_fail
+    Recorder._reinit_portaudio = staticmethod(lambda: None)
+    try:
+        stream = r._open_input_with_retry(device=None, max_retries=2)
+    finally:
+        sd.InputStream = orig_input
+        Recorder._reinit_portaudio = orig_reinit
+
+    assert stream is None, "all-failures must return None, not raise"
+    # max_retries=2 → 3 attempts total
+    assert attempts["n"] == 3, f"expected 3 attempts total, got {attempts['n']}"
+
+
+@case("TC_REC_SILENT_MARKS_DIRTY", "recorder",
+      "silent recording (peak=rms=0) marks subsystem dirty for self-healing on next attempt")
+def test_silent_marks_dirty():
+    """Simulate the post-wake silent-capture scenario.
+
+    We can't easily produce a real zero-only InputStream in a unit test,
+    so we manipulate the recorder's frames directly to mimic a 1s
+    all-zero recording, then call _stop_locked through the public stop().
+    """
+    r = Recorder(force_builtin=False)
+    # Manually inject 1 second of silence as if the audio_callback
+    # delivered zero buffers (the exact post-wake symptom).
+    silent = np.zeros((recorder.SAMPLE_RATE, 1), dtype=np.float32)
+    with r._lock:
+        r._recording = True
+        r._frames = [silent]
+        r._stream = None  # no real stream
+    path = r.stop()
+    assert path is None, "silent recording must return None (not a WAV)"
+    assert r._last_error == "mic_silent"
+    assert r._subsystem_dirty is True, (
+        "silent recording should mark subsystem dirty so next start() reinits PortAudio"
+    )
+
+
 if __name__ == "__main__":
     run_all("test_vad_and_recorder")

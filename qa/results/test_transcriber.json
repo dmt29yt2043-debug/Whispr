@@ -50,6 +50,22 @@
       "error": null
     },
     {
+      "id": "TC_TRANSCRIBE_BREAKER_SKIPS_API",
+      "area": "transcriber",
+      "desc": "circuit breaker open \u2192 _transcribe_api returns None without ANY API calls",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSCRIBE_BREAKER_TRIPS_MID_CHAIN",
+      "area": "transcriber",
+      "desc": "if first model trips breaker, remaining models in fallback chain are skipped",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
       "id": "TC_TRANSCRIBE_REAL_15S_NO_TRUNCATION",
       "area": "transcriber",
       "desc": "regression: 15s audio that we logged returning 73 chars now goes to whisper-1",

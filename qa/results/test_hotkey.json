@@ -6,7 +6,7 @@
       "area": "hotkey",
       "desc": "push-to-talk: hold \u2265 _MIN_HOLD \u2192 start + stop on release",
       "status": "PASS",
-      "ms": 1,
+      "ms": 0,
       "error": null
     },
     {
@@ -14,7 +14,7 @@
       "area": "hotkey",
       "desc": "single short tap \u2192 start + stop after double-tap timeout",
       "status": "PASS",
-      "ms": 457,
+      "ms": 464,
       "error": null
     },
     {
@@ -22,7 +22,7 @@
       "area": "hotkey",
       "desc": "double-tap: two short taps \u2192 toggle mode, recording stays on",
       "status": "PASS",
-      "ms": 655,
+      "ms": 652,
       "error": null
     },
     {
@@ -30,7 +30,7 @@
       "area": "hotkey",
       "desc": "in toggle mode, next press stops recording",
       "status": "PASS",
-      "ms": 555,
+      "ms": 552,
       "error": null
     },
     {

@@ -1,0 +1,77 @@
+{
+  "script": "test_api_status",
+  "results": [
+    {
+      "id": "TC_API_STATUS_INITIAL",
+      "area": "api_status",
+      "desc": "fresh module: breaker is not tripped, time_remaining=0",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_API_STATUS_TRIP_QUOTA",
+      "area": "api_status",
+      "desc": "insufficient_quota error trips the breaker",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_API_STATUS_TRIP_BILLING",
+      "area": "api_status",
+      "desc": "billing-related error also trips the breaker",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_API_STATUS_NO_TRIP_NETWORK",
+      "area": "api_status",
+      "desc": "transient network errors do NOT trip the breaker (those should retry naturally)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_API_STATUS_NO_TRIP_500",
+      "area": "api_status",
+      "desc": "5xx server errors do NOT trip (transient \u2014 let OpenAI retry)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_API_STATUS_NOTIFY_CALLED",
+      "area": "api_status",
+      "desc": "registered callback is invoked once when breaker first trips",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_API_STATUS_RESET",
+      "area": "api_status",
+      "desc": "reset() clears breaker state",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_API_STATUS_AUTO_RECOVER",
+      "area": "api_status",
+      "desc": "breaker auto-recovers after cooldown expires",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_API_STATUS_NOTIFY_REQUIRES_NEW_TRIP",
+      "area": "api_status",
+      "desc": "after auto-recovery, a new trip event re-notifies",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    }
+  ]
+}

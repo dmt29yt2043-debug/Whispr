@@ -214,6 +214,69 @@ class WhisperDictationApp(rumps.App):
         if S.get("mode") in (S.MODE_LOCAL, S.MODE_AUTO):
             threading.Thread(target=warmup_local_model, daemon=True).start()
 
+        # Listen for macOS wake-from-sleep so we can heal a stale PortAudio
+        # handle BEFORE the user hits the hotkey. Without this, the first
+        # recording after wake silently captures zeros for ~13s (peak=0.0,
+        # rms=0.0) — InputStream opens fine, callback fires, but CoreAudio
+        # delivers an empty buffer because the HAL Audio Unit died during
+        # sleep. The fix is sd._terminate()+sd._initialize() which forces
+        # PortAudio to rebuild the bridge. Done lazily inside recorder
+        # start() (mark_subsystem_dirty just sets a flag) so we don't
+        # interfere if a recording is somehow already running at wake.
+        self._install_wake_observer()
+
+        # Surface API outages (quota exhausted) as a one-shot notification
+        # rather than letting the user wait through 20s of silent retries.
+        try:
+            import api_status
+            api_status.set_notify_callback(self._on_api_breaker_tripped)
+        except Exception as e:
+            log.debug("api_status notify hook failed: %s", e)
+
+    def _on_api_breaker_tripped(self, reason: str) -> None:
+        """Called once when the OpenAI API circuit breaker trips.
+
+        Tells the user we're falling back to the local model. Reason
+        usually contains 'insufficient_quota' / billing wording, which
+        we surface so they know to top up.
+        """
+        short = reason
+        if "insufficient_quota" in reason.lower() or "exceeded" in reason.lower():
+            short = "OpenAI quota exhausted — using local model. Check billing."
+        elif "billing" in reason.lower():
+            short = "OpenAI billing issue — using local model."
+        self._notify("API issue", short)
+
+    def _install_wake_observer(self) -> None:
+        """Subscribe to NSWorkspaceDidWakeNotification on the shared workspace.
+
+        Best-effort — if AppKit isn't importable we just skip and rely on
+        the post-silent-recording self-heal as a backstop.
+        """
+        try:
+            from AppKit import NSWorkspace
+            from Foundation import NSObject
+            recorder = self.recorder
+
+            class _WakeObserver(NSObject):
+                def wakeFromSleep_(self, _notification):
+                    recorder.mark_subsystem_dirty(reason="wake-from-sleep")
+
+            self._wake_observer = _WakeObserver.alloc().init()
+            nc = NSWorkspace.sharedWorkspace().notificationCenter()
+            nc.addObserver_selector_name_object_(
+                self._wake_observer,
+                "wakeFromSleep:",
+                "NSWorkspaceDidWakeNotification",
+                None,
+            )
+            log.info("Wake-from-sleep observer installed")
+        except Exception as e:
+            log.warning(
+                "Could not install wake observer (%s) — relying on "
+                "silent-recording auto-heal instead", e,
+            )
+
     # ── Recording lifecycle ─────────────────────────────────────────────
 
     def _toggle_recording(self, sender) -> None:

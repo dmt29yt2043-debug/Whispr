@@ -9,6 +9,7 @@ from openai import OpenAI
 
 import settings as S
 import stats as _stats
+import api_status
 
 log = logging.getLogger(__name__)
 
@@ -149,8 +150,17 @@ def clean_text(raw_text: str, bundle_id: Optional[str] = None) -> str:
         log.warning("No OPENAI_API_KEY, skipping cleanup")
         return raw_text
 
+    # If quota is exhausted, don't burn another 3.5s of retries on a
+    # cosmetic step. Raw text is fine.
+    if api_status.is_tripped():
+        log.info("API breaker open — skipping cleanup, returning raw text")
+        return raw_text
+
     try:
-        client = OpenAI(api_key=api_key)
+        # max_retries=0: cleanup is best-effort and the OpenAI client's
+        # default 2 retries with backoff add ~3.5s on a definite failure
+        # (e.g. quota exhausted) for no benefit.
+        client = OpenAI(api_key=api_key, max_retries=0)
         system_prompt = _build_system_prompt(
             tone=tone,
             always_english=S.get("always_english", False),
@@ -188,5 +198,8 @@ def clean_text(raw_text: str, bundle_id: Optional[str] = None) -> str:
             return cleaned
     except Exception as e:
         log.warning("GPT cleanup failed, using raw text: %s", e)
+        # If this was a quota error, trip the breaker so transcribe()
+        # also stops hammering the API on the next dictation.
+        api_status.trip(e)
 
     return raw_text

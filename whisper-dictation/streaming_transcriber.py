@@ -99,6 +99,13 @@ class StreamingTranscriber:
         if not os.environ.get("OPENAI_API_KEY"):
             log.warning("No OPENAI_API_KEY — streaming unavailable")
             return False
+        try:
+            import api_status
+            if api_status.is_tripped():
+                log.info("API breaker open — skipping streaming session")
+                return False
+        except Exception:
+            pass
 
         self._sample_rate = sample_rate
         t = threading.Thread(
@@ -348,12 +355,24 @@ class StreamingTranscriber:
             with self._lock:
                 self._error = err
                 self._final_event.set()
+            # Trip global breaker on quota errors so the rest of the
+            # pipeline (batch transcribe, cleanup) skips the API too.
+            try:
+                import api_status
+                api_status.trip(Exception(err))
+            except Exception:
+                pass
         elif etype == "error":
             err = evt.get("error", {}).get("message", "unknown")
             log.warning("Realtime WS error event: %s (full: %s)", err, evt)
             with self._lock:
                 self._error = err
                 self._final_event.set()  # unblock caller
+            try:
+                import api_status
+                api_status.trip(Exception(err))
+            except Exception:
+                pass
 
     def _safe_close(self) -> None:
         self._closed = True

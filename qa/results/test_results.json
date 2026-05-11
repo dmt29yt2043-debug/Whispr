@@ -178,6 +178,80 @@
         "error": null
       }
     ],
+    "test_api_status": [
+      {
+        "id": "TC_API_STATUS_INITIAL",
+        "area": "api_status",
+        "desc": "fresh module: breaker is not tripped, time_remaining=0",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_API_STATUS_TRIP_QUOTA",
+        "area": "api_status",
+        "desc": "insufficient_quota error trips the breaker",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_API_STATUS_TRIP_BILLING",
+        "area": "api_status",
+        "desc": "billing-related error also trips the breaker",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_API_STATUS_NO_TRIP_NETWORK",
+        "area": "api_status",
+        "desc": "transient network errors do NOT trip the breaker (those should retry naturally)",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_API_STATUS_NO_TRIP_500",
+        "area": "api_status",
+        "desc": "5xx server errors do NOT trip (transient \u2014 let OpenAI retry)",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_API_STATUS_NOTIFY_CALLED",
+        "area": "api_status",
+        "desc": "registered callback is invoked once when breaker first trips",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_API_STATUS_RESET",
+        "area": "api_status",
+        "desc": "reset() clears breaker state",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_API_STATUS_AUTO_RECOVER",
+        "area": "api_status",
+        "desc": "breaker auto-recovers after cooldown expires",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_API_STATUS_NOTIFY_REQUIRES_NEW_TRIP",
+        "area": "api_status",
+        "desc": "after auto-recovery, a new trip event re-notifies",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      }
+    ],
     "test_cleaner": [
       {
         "id": "TC_002",
@@ -200,7 +274,7 @@
         "area": "cleaner",
         "desc": "speech with fillers triggers GPT call",
         "status": "PASS",
-        "ms": 10,
+        "ms": 4,
         "error": null
       },
       {
@@ -224,7 +298,7 @@
         "area": "cleaner",
         "desc": "tone=raw always skips GPT",
         "status": "PASS",
-        "ms": 1,
+        "ms": 0,
         "error": null
       },
       {
@@ -250,7 +324,7 @@
         "area": "hotkey",
         "desc": "push-to-talk: hold \u2265 _MIN_HOLD \u2192 start + stop on release",
         "status": "PASS",
-        "ms": 1,
+        "ms": 0,
         "error": null
       },
       {
@@ -258,7 +332,7 @@
         "area": "hotkey",
         "desc": "single short tap \u2192 start + stop after double-tap timeout",
         "status": "PASS",
-        "ms": 457,
+        "ms": 464,
         "error": null
       },
       {
@@ -266,7 +340,7 @@
         "area": "hotkey",
         "desc": "double-tap: two short taps \u2192 toggle mode, recording stays on",
         "status": "PASS",
-        "ms": 655,
+        "ms": 652,
         "error": null
       },
       {
@@ -274,7 +348,7 @@
         "area": "hotkey",
         "desc": "in toggle mode, next press stops recording",
         "status": "PASS",
-        "ms": 555,
+        "ms": 552,
         "error": null
       },
       {
@@ -300,7 +374,7 @@
         "area": "injector",
         "desc": "empty text returns 'skipped', doesn't touch clipboard",
         "status": "PASS",
-        "ms": 61,
+        "ms": 64,
         "error": null
       },
       {
@@ -308,7 +382,7 @@
         "area": "injector",
         "desc": "whitespace-only text returns 'skipped'",
         "status": "PASS",
-        "ms": 170,
+        "ms": 128,
         "error": null
       },
       {
@@ -324,7 +398,7 @@
         "area": "injector",
         "desc": "text focus \u2192 returns 'pasted', fires Cmd+V",
         "status": "PASS",
-        "ms": 57,
+        "ms": 56,
         "error": null
       },
       {
@@ -332,7 +406,7 @@
         "area": "injector",
         "desc": "clipboard verification: waits for clipboard to settle before paste",
         "status": "PASS",
-        "ms": 1,
+        "ms": 0,
         "error": null
       },
       {
@@ -340,7 +414,7 @@
         "area": "injector",
         "desc": "clipboard restore: skipped when user changes clipboard during wait",
         "status": "PASS",
-        "ms": 964,
+        "ms": 961,
         "error": null
       },
       {
@@ -348,7 +422,7 @@
         "area": "injector",
         "desc": "clipboard restore: restores when clipboard still ours",
         "status": "PASS",
-        "ms": 962,
+        "ms": 964,
         "error": null
       },
       {
@@ -382,7 +456,7 @@
         "area": "performance",
         "desc": "10 threads \u00d7 100 stats writes \u2014 latency p95 <50ms",
         "status": "PASS",
-        "ms": 1368,
+        "ms": 716,
         "error": null
       },
       {
@@ -390,7 +464,7 @@
         "area": "performance",
         "desc": "20 threads \u00d7 50 settings writes \u2014 no lost writes, fast",
         "status": "PASS",
-        "ms": 1595,
+        "ms": 1441,
         "error": null
       },
       {
@@ -398,7 +472,7 @@
         "area": "performance",
         "desc": "anti-hallucination filter on 10,000 inputs < 1s",
         "status": "PASS",
-        "ms": 73,
+        "ms": 75,
         "error": null
       }
     ],
@@ -474,7 +548,7 @@
         "area": "security",
         "desc": "SQL injection attempt via model name is parameterized safely",
         "status": "PASS",
-        "ms": 5,
+        "ms": 16,
         "error": null
       },
       {
@@ -482,7 +556,7 @@
         "area": "security",
         "desc": "afplay fallback uses subprocess, no shell interpolation",
         "status": "PASS",
-        "ms": 3,
+        "ms": 9,
         "error": null
       },
       {
@@ -490,7 +564,7 @@
         "area": "security",
         "desc": "replacement value with HTML/script stored unchanged, no exec",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -498,7 +572,7 @@
         "area": "security",
         "desc": "replacements stored inside config dir only; traversal keys = just data",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -548,7 +622,7 @@
         "area": "settings",
         "desc": "set() persists across reload()",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -564,7 +638,7 @@
         "area": "settings",
         "desc": "50 concurrent set() from 20 threads \u2014 no lost writes",
         "status": "PASS",
-        "ms": 31,
+        "ms": 38,
         "error": null
       },
       {
@@ -572,7 +646,7 @@
         "area": "settings",
         "desc": "settings file never in 0-byte state under concurrent writes",
         "status": "PASS",
-        "ms": 509,
+        "ms": 570,
         "error": null
       }
     ],
@@ -582,7 +656,7 @@
         "area": "stats",
         "desc": "record_transcribe increments by_model correctly",
         "status": "PASS",
-        "ms": 7,
+        "ms": 25,
         "error": null
       },
       {
@@ -590,7 +664,7 @@
         "area": "stats",
         "desc": "paid_seconds excludes local, local_seconds separated",
         "status": "PASS",
-        "ms": 3,
+        "ms": 27,
         "error": null
       },
       {
@@ -598,7 +672,7 @@
         "area": "stats",
         "desc": "GPT token cost computed correctly",
         "status": "PASS",
-        "ms": 2,
+        "ms": 64,
         "error": null
       },
       {
@@ -606,7 +680,7 @@
         "area": "stats",
         "desc": "10 threads \u00d7 100 increments \u2014 no lost writes",
         "status": "PASS",
-        "ms": 870,
+        "ms": 1932,
         "error": null
       },
       {
@@ -614,7 +688,7 @@
         "area": "stats",
         "desc": "SQL-injection-like model name handled via parameterized query",
         "status": "PASS",
-        "ms": 3,
+        "ms": 8,
         "error": null
       },
       {
@@ -622,7 +696,7 @@
         "area": "stats",
         "desc": "word count increments across dictations",
         "status": "PASS",
-        "ms": 2,
+        "ms": 6,
         "error": null
       },
       {
@@ -630,7 +704,7 @@
         "area": "stats",
         "desc": "empty text/zero seconds doesn't add rows",
         "status": "PASS",
-        "ms": 1,
+        "ms": 3,
         "error": null
       }
     ],
@@ -684,6 +758,22 @@
         "error": null
       },
       {
+        "id": "TC_TRANSCRIBE_BREAKER_SKIPS_API",
+        "area": "transcriber",
+        "desc": "circuit breaker open \u2192 _transcribe_api returns None without ANY API calls",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_TRANSCRIBE_BREAKER_TRIPS_MID_CHAIN",
+        "area": "transcriber",
+        "desc": "if first model trips breaker, remaining models in fallback chain are skipped",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
         "id": "TC_TRANSCRIBE_REAL_15S_NO_TRUNCATION",
         "area": "transcriber",
         "desc": "regression: 15s audio that we logged returning 73 chars now goes to whisper-1",
@@ -698,7 +788,7 @@
         "area": "vad",
         "desc": "pure silence \u2192 None (no speech)",
         "status": "PASS",
-        "ms": 3,
+        "ms": 7,
         "error": null
       },
       {
@@ -706,7 +796,7 @@
         "area": "vad",
         "desc": "tone + silence \u2192 returns trimmed WAV",
         "status": "PASS",
-        "ms": 2,
+        "ms": 6,
         "error": null
       },
       {
@@ -714,7 +804,7 @@
         "area": "vad",
         "desc": "<0.3s audio bypasses VAD, returns original",
         "status": "PASS",
-        "ms": 62,
+        "ms": 50,
         "error": null
       },
       {
@@ -722,7 +812,7 @@
         "area": "vad",
         "desc": "VAD failure on silent audio \u2192 None (pipeline will use raw)",
         "status": "PASS",
-        "ms": 1,
+        "ms": 2,
         "error": null
       },
       {
@@ -746,7 +836,7 @@
         "area": "recorder",
         "desc": "start/stop serialized via _op_lock; rapid calls do not race",
         "status": "PASS",
-        "ms": 577,
+        "ms": 683,
         "error": null
       },
       {
@@ -754,15 +844,63 @@
         "area": "recorder",
         "desc": "recording <0.4s \u2192 returns None, no orphan WAV",
         "status": "PASS",
-        "ms": 246,
+        "ms": 325,
+        "error": null
+      },
+      {
+        "id": "TC_REC_WAKE_FLAG",
+        "area": "recorder",
+        "desc": "mark_subsystem_dirty sets the dirty flag",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_REC_DIRTY_TRIGGERS_REINIT",
+        "area": "recorder",
+        "desc": "wake \u2192 reinit happens (either in async warm-up OR at start()); dirty flag is cleared by end of start()",
+        "status": "PASS",
+        "ms": 543,
+        "error": null
+      },
+      {
+        "id": "TC_REC_CLEAN_NO_REINIT",
+        "area": "recorder",
+        "desc": "start() without dirty flag does NOT call PortAudio reinit (cheap path)",
+        "status": "PASS",
+        "ms": 306,
+        "error": null
+      },
+      {
+        "id": "TC_REC_OPEN_RETRY_AFTER_FAILURE",
+        "area": "recorder",
+        "desc": "InputStream open failure \u2192 reinit + retry; second attempt succeeds",
+        "status": "PASS",
+        "ms": 105,
+        "error": null
+      },
+      {
+        "id": "TC_REC_OPEN_GIVES_UP_AFTER_RETRIES",
+        "area": "recorder",
+        "desc": "InputStream open fails on every attempt \u2192 returns None, no infinite loop",
+        "status": "PASS",
+        "ms": 210,
+        "error": null
+      },
+      {
+        "id": "TC_REC_SILENT_MARKS_DIRTY",
+        "area": "recorder",
+        "desc": "silent recording (peak=rms=0) marks subsystem dirty for self-healing on next attempt",
+        "status": "PASS",
+        "ms": 0,
         "error": null
       }
     ]
   },
   "summary": {
-    "pass": 92,
+    "pass": 109,
     "fail": 0,
     "error": 0,
-    "total": 92
+    "total": 109
   }
 }

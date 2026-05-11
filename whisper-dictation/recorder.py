@@ -64,6 +64,82 @@ class Recorder:
         # Optional raw-chunk callback for streaming transcription
         # (fired with PCM16 bytes on every audio callback).
         self._chunk_callback = None
+        # Subsystem-dirty flag. Set when (a) macOS wakes from sleep, or
+        # (b) a previous recording came back fully silent (peak=rms=0.0).
+        # Both indicate PortAudio is holding a stale CoreAudio handle —
+        # InputStream opens without error and the callback fires, but the
+        # device delivers only zeros. The fix is to terminate+reinitialize
+        # PortAudio before opening the next stream. Done lazily inside
+        # start() rather than reactively in the wake handler so we don't
+        # race with an in-flight recording.
+        self._subsystem_dirty = False
+
+    def mark_subsystem_dirty(self, reason: str = "external") -> None:
+        """External signal: force PortAudio reinit on next start().
+
+        Called from the macOS wake-from-sleep observer in app.py. Cheap
+        no-op if a recording is already in progress (we'll reinit on the
+        FOLLOWING start) — re-initing while a stream is open would crash
+        the CoreAudio thread.
+
+        ALSO does a proactive background warm-up: reinit + a 50ms dummy
+        InputStream open/close. Without the warm-up, the *first* recording
+        after wake reliably failed with PaErrorCode -9986 ("Internal
+        PortAudio error") because the HAL doesn't fully come back until
+        someone opens an InputStream. We do that work now, before the user
+        presses Fn, so the visible Fn-press path stays fast and never sees
+        the cold-start error.
+        """
+        log.info("Audio subsystem marked dirty (reason=%s)", reason)
+        self._subsystem_dirty = True
+
+        # Skip warm-up if a recording is in flight — opening a parallel
+        # stream while another is active deadlocks CoreAudio on some macs.
+        if self._recording:
+            log.info("Recording in progress, deferring warm-up to next start")
+            return
+
+        def _warm_up_async():
+            try:
+                self._reinit_portaudio()
+                # Open + immediately close a tiny stream to force HAL
+                # to actually bind to the device. This is what's missing
+                # from a bare _terminate()/_initialize() pair.
+                probe = sd.InputStream(
+                    samplerate=SAMPLE_RATE,
+                    channels=CHANNELS,
+                    dtype="float32",
+                )
+                probe.start()
+                probe.stop()
+                probe.close()
+                self._subsystem_dirty = False
+                log.info("PortAudio warmed up after %s — ready", reason)
+            except Exception as e:
+                # Warm-up failed: leave the dirty flag set so start()
+                # will try again (with its retry loop).
+                log.warning("PortAudio warm-up failed (%s) — will retry on next start", e)
+
+        threading.Thread(target=_warm_up_async, daemon=True).start()
+
+    @staticmethod
+    def _reinit_portaudio() -> None:
+        """Force PortAudio to drop and reopen its CoreAudio connections.
+
+        After macOS wake, sounddevice's cached HAL handles point to dead
+        Audio Unit instances. _terminate()+_initialize() forces the
+        underlying portaudio library to call Pa_Terminate / Pa_Initialize,
+        which re-enumerates devices and rebuilds the HAL bridge. Cheap —
+        ~50ms — and idempotent.
+        """
+        try:
+            sd._terminate()
+            sd._initialize()
+            log.info("PortAudio reinitialized")
+        except Exception as e:
+            # Don't crash the recorder if reinit fails; the open-stream
+            # call below will surface a clearer error.
+            log.warning("PortAudio reinit failed: %s", e)
 
     @property
     def is_recording(self) -> bool:
@@ -100,6 +176,15 @@ class Recorder:
             self._op_lock.release()
 
     def _start_locked(self) -> None:
+        # If subsystem was marked dirty (wake-from-sleep, prior silent
+        # capture), reinit PortAudio BEFORE acquiring the recording state
+        # lock. This is safe: nothing is recording yet so no stream is in
+        # flight. We do it outside the with-block because _terminate() can
+        # take ~50ms.
+        if self._subsystem_dirty:
+            self._reinit_portaudio()
+            self._subsystem_dirty = False
+
         with self._lock:
             if self._recording:
                 return
@@ -112,30 +197,66 @@ class Recorder:
 
             device = _find_builtin_mic_index() if self._force_builtin else None
 
-            try:
-                self._stream = sd.InputStream(
-                    device=device,
-                    samplerate=SAMPLE_RATE,
-                    channels=CHANNELS,
-                    dtype="float32",
-                    callback=self._audio_callback,
+            # Auto-heal loop: if we get the classic post-wake -9986
+            # ("Internal PortAudio error"), reinit and try again. Without
+            # this, the user has to quit & relaunch the app — a known
+            # complaint after Mac sleeps. We give up after 2 retries to
+            # avoid infinite loops if the mic is genuinely broken.
+            self._stream = self._open_input_with_retry(device, max_retries=2)
+            if self._stream is None:
+                self._recording = False
+                raise RuntimeError(
+                    "Could not open microphone after retries — see prior log"
                 )
-                self._stream.start()
+
+    def _open_input_with_retry(self, device, max_retries: int = 2):
+        """Try to open an InputStream, reinitializing PortAudio on failure.
+
+        Returns the started stream, or None if all attempts fail.
+        """
+        def _try_open(dev):
+            stream = sd.InputStream(
+                device=dev,
+                samplerate=SAMPLE_RATE,
+                channels=CHANNELS,
+                dtype="float32",
+                callback=self._audio_callback,
+            )
+            stream.start()
+            return stream
+
+        last_err = None
+        for attempt in range(max_retries + 1):
+            try:
+                return _try_open(device)
             except Exception as e:
-                log.warning("Failed to open device %s, falling back: %s", device, e)
-                try:
-                    self._stream = sd.InputStream(
-                        samplerate=SAMPLE_RATE,
-                        channels=CHANNELS,
-                        dtype="float32",
-                        callback=self._audio_callback,
-                    )
-                    self._stream.start()
-                except Exception as e2:
-                    log.error("Default device also failed: %s", e2)
-                    self._stream = None
-                    self._recording = False
-                    raise
+                last_err = e
+                log.warning(
+                    "InputStream open failed on attempt %d/%d (device=%s): %s",
+                    attempt + 1, max_retries + 1, device, e,
+                )
+                # On the second-to-last attempt, also try default device
+                # (covers the case where the named built-in mic index is stale).
+                if attempt == max_retries - 1 and device is not None:
+                    try:
+                        log.info("Trying default device after named-device failure")
+                        return _try_open(None)
+                    except Exception as e2:
+                        log.warning("Default device also failed: %s", e2)
+                        last_err = e2
+
+                # Don't reinit on the final loop — caller will give up.
+                if attempt < max_retries:
+                    log.info("Reinitializing PortAudio before retry...")
+                    self._reinit_portaudio()
+                    # Tiny breather: HAL needs a moment to settle after
+                    # _terminate() before a fresh InputStream succeeds.
+                    import time as _t
+                    _t.sleep(0.1)
+
+        log.error("InputStream open failed after %d attempts. Last error: %s",
+                  max_retries + 1, last_err)
+        return None
 
     def stop(self) -> Optional[str]:
         """Stop recording and return path to the temp WAV file, or None if too short."""
@@ -195,11 +316,17 @@ class Recorder:
             # triggered false 'mic muted' errors.
             if peak < 0.0005 and rms < 0.0001:
                 log.warning(
-                    "SILENT recording (peak=%.5f rms=%.5f). Mic permission "
-                    "likely missing. Check System Settings → Privacy → Microphone.",
+                    "SILENT recording (peak=%.5f rms=%.5f). Likely PortAudio "
+                    "holding a stale CoreAudio handle (common after macOS wake). "
+                    "Marking subsystem dirty — next start() will reinitialize.",
                     peak, rms,
                 )
                 self._last_error = "mic_silent"
+                # Self-healing: the NEXT start() will reinit PortAudio and
+                # the recording should work. We don't reinit right now
+                # because that's wasted work if the user gives up; we want
+                # the cost amortized only when they actually retry.
+                self._subsystem_dirty = True
                 return None
             # BUG FIX #32: short presses (< 2s) where the audio is just room
             # tone — peak ~0.03, rms ~0.005 — make Whisper hallucinate single
