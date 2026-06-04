@@ -49,19 +49,67 @@ def _press_cmd_v() -> None:
     CGEventPost(kCGHIDEventTap, up)
 
 
-def repaste_last() -> bool:
-    """Copy last transcription to clipboard and simulate Cmd+V.
+def repaste_last(restore_clipboard: bool = True) -> bool:
+    """Paste the last transcription without permanently touching the clipboard.
+
+    Behaviour:
+      1. Snapshot the current clipboard.
+      2. Put the last transcription on the clipboard, send Cmd+V.
+      3. After ~600ms, restore the snapshot — UNLESS the user has copied
+         something new in the meantime (we detect by comparing clipboard
+         content to what we just put there).
+
+    The 600ms gap exists because some apps read the clipboard asynchronously
+    after receiving Cmd+V; restoring too fast can cause them to paste the
+    OLD content instead of our text.
 
     Returns True if there was a transcription to paste.
     """
     if not _last_transcription:
         log.info("Re-paste requested but no previous transcription")
         return False
+    text = _last_transcription
+
+    # Snapshot user's existing clipboard so we can put it back.
+    prev_clipboard: Optional[str] = None
+    if restore_clipboard:
+        try:
+            prev_clipboard = pyperclip.paste()
+        except Exception:
+            prev_clipboard = None
+
     try:
-        pyperclip.copy(_last_transcription)
-        time.sleep(0.05)
+        # Wait up to 350ms for the clipboard manager to actually accept
+        # our copy (Alfred/Raycast/Paste.app sometimes hold it briefly).
+        # Without this, Cmd+V can paste stale content.
+        pyperclip.copy(text)
+        deadline = time.time() + 0.30
+        while time.time() < deadline:
+            try:
+                if pyperclip.paste() == text:
+                    break
+            except Exception:
+                break
+            time.sleep(0.02)
+
         _press_cmd_v()
-        log.info("Re-pasted last transcription (%d chars)", len(_last_transcription))
+        log.info("Re-pasted last transcription (%d chars)", len(text))
+
+        # Restore the user's clipboard in the background — only if it
+        # still contains our text (i.e. the user hasn't copied something
+        # new during the wait, in which case we must not clobber their copy).
+        if restore_clipboard and prev_clipboard is not None:
+            def _restore():
+                time.sleep(0.6)
+                try:
+                    if pyperclip.paste() == text:
+                        pyperclip.copy(prev_clipboard)
+                        log.debug("Clipboard restored after re-paste")
+                    else:
+                        log.debug("Clipboard changed by user — skipping restore")
+                except Exception:
+                    pass
+            threading.Thread(target=_restore, daemon=True).start()
         return True
     except Exception as e:
         log.error("Re-paste failed: %s", e)

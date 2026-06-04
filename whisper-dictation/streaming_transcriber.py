@@ -39,6 +39,27 @@ _REALTIME_URL = "wss://api.openai.com/v1/realtime?intent=transcription"
 _TRANSCRIBE_MODEL = "gpt-4o-transcribe"
 _CONNECT_TIMEOUT_SEC = 3.0
 
+# Process-wide kill switch for the Realtime API. We flip this to True
+# permanently the first time we see a "beta_api_shape_disabled" error
+# (OpenAI sunsetted the Beta endpoint in 2026). Without this flag, every
+# dictation re-opens the WS just to discover the API is dead and waits
+# out the 6s commit_and_wait timeout — adding 6s of latency per phrase.
+# Once flipped, start_async() returns False immediately and app.py falls
+# straight through to batch transcription.
+_REALTIME_DISABLED_FOR_SESSION = False
+_REALTIME_DISABLED_REASON = ""
+
+
+def _disable_realtime(reason: str) -> None:
+    global _REALTIME_DISABLED_FOR_SESSION, _REALTIME_DISABLED_REASON
+    if not _REALTIME_DISABLED_FOR_SESSION:
+        _REALTIME_DISABLED_FOR_SESSION = True
+        _REALTIME_DISABLED_REASON = reason
+        log.warning(
+            "Realtime API disabled for the rest of this session — %s. "
+            "All dictations will use batch transcription.", reason,
+        )
+
 
 class StreamingTranscriber:
     """Wrapper around the Realtime WebSocket. One instance per session.
@@ -98,6 +119,13 @@ class StreamingTranscriber:
             return False
         if not os.environ.get("OPENAI_API_KEY"):
             log.warning("No OPENAI_API_KEY — streaming unavailable")
+            return False
+        # Realtime API was disabled earlier in this session (e.g. beta
+        # endpoint was sunsetted). Don't waste 6s waiting for a connect
+        # that will only fail again — go straight to batch.
+        if _REALTIME_DISABLED_FOR_SESSION:
+            log.info("Realtime disabled (%s) — skipping streaming",
+                     _REALTIME_DISABLED_REASON)
             return False
         try:
             import api_status
@@ -364,10 +392,17 @@ class StreamingTranscriber:
                 pass
         elif etype == "error":
             err = evt.get("error", {}).get("message", "unknown")
+            err_code = evt.get("error", {}).get("code", "")
             log.warning("Realtime WS error event: %s (full: %s)", err, evt)
             with self._lock:
                 self._error = err
-                self._final_event.set()  # unblock caller
+                self._closed = True   # don't wait for further events
+                self._final_event.set()  # unblock commit_and_wait NOW
+            # Beta API was permanently disabled by OpenAI. Flip the
+            # session-wide kill switch so subsequent dictations skip
+            # streaming entirely instead of paying the 6s timeout each.
+            if err_code == "beta_api_shape_disabled" or "Beta API" in err:
+                _disable_realtime(f"OpenAI: {err}")
             try:
                 import api_status
                 api_status.trip(Exception(err))

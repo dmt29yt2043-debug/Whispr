@@ -155,14 +155,47 @@ def _generic_error_message(exc: Exception) -> str:
     return "Processing failed"
 
 
-ICON_IDLE = "🎙"
+# Menu-bar STATE markers. These are passed to _set_title_safe(); it maps
+# them to either a PNG icon (when our custom-rendered mic is available)
+# or the plain emoji/text fallback below. The actual values are arbitrary
+# sentinel strings; existing call sites pass these constants unchanged.
+ICON_IDLE = "🎙"        # also the emoji fallback if PNG generation fails
 ICON_REC = "● REC"
 ICON_PROCESSING = "⏳"
+
+# Real paths get filled in __init__ via mic_icon.ensure_*; menu-bar
+# state transitions use _set_menu_icon() to swap path/title atomically.
+_MENU_BAR_ICON_IDLE: str = ""
+_MENU_BAR_ICON_REC: str = ""
 
 
 class WhisperDictationApp(rumps.App):
     def __init__(self):
-        super().__init__(ICON_IDLE, quit_button=None)
+        # Generate the custom mic icon BEFORE super().__init__ — rumps reads
+        # the icon argument immediately when constructing the status item.
+        global _MENU_BAR_ICON_IDLE, _MENU_BAR_ICON_REC
+        try:
+            import mic_icon
+            _MENU_BAR_ICON_IDLE = mic_icon.ensure_menu_bar_icon() or ""
+            _MENU_BAR_ICON_REC = mic_icon.ensure_menu_bar_icon_recording() or ""
+        except Exception as e:
+            log.warning("Custom mic icon generation failed: %s — falling back to emoji", e)
+
+        if _MENU_BAR_ICON_IDLE:
+            # Pass icon as a coloured PNG (not template). On macOS Tahoe,
+            # template-mode PNGs with antialiased edges sometimes render
+            # as a blank space in the menu bar; a coloured icon shows up
+            # reliably. We use the same dark navy as the overlay glyph,
+            # so the menu-bar and overlay look like the same product.
+            super().__init__(
+                name="Whisper Dictation",
+                title=None,
+                icon=_MENU_BAR_ICON_IDLE,
+                template=False,
+                quit_button=None,
+            )
+        else:
+            super().__init__(_ICON_IDLE_FALLBACK, quit_button=None)
 
         # Ensure settings exist on disk
         S.load()
@@ -331,11 +364,43 @@ class WhisperDictationApp(rumps.App):
         threading.Thread(target=_tear_down, daemon=True).start()
 
     def _set_title_safe(self, title: str, record_item_title: str = None) -> None:
-        """Update menu bar title on the main thread (AppKit is not thread-safe)."""
+        """Update menu bar title on the main thread (AppKit is not thread-safe).
+
+        If our custom PNG icons are available, we ALSO swap the menu-bar
+        glyph between the idle template (auto-tinted black/white) and a
+        solid-red REC variant. That way the recording state is obvious
+        regardless of the menu bar appearance.
+        """
         from PyObjCTools import AppHelper
+
+        # Decide which icon path goes with this title — based on the
+        # status string the existing callers use.
+        if title == ICON_REC and _MENU_BAR_ICON_REC:
+            target_icon, target_template = _MENU_BAR_ICON_REC, False
+            target_title = None  # icon alone, no "● REC" text — keeps the bar tidy
+        elif title == ICON_IDLE and _MENU_BAR_ICON_IDLE:
+            # template=False — coloured icon, see __init__ for rationale
+            target_icon, target_template = _MENU_BAR_ICON_IDLE, False
+            target_title = None
+        else:
+            # Processing or unexpected state — fall back to text/emoji
+            target_icon, target_template = None, None
+            target_title = title
+
         def _do():
             try:
-                self.title = title
+                if target_icon is not None:
+                    # rumps wraps a NSStatusItem; .icon and .template both
+                    # forward to the underlying button.image / .template.
+                    self.icon = target_icon
+                    try:
+                        self.template = target_template
+                    except Exception:
+                        pass
+                    self.title = target_title  # clears any leftover text
+                else:
+                    self.icon = None
+                    self.title = target_title
                 if record_item_title is not None:
                     self.record_item.title = record_item_title
             except Exception:
@@ -927,8 +992,13 @@ def main():
     # Install re-paste hotkey (Cmd+Shift+V)
     app.repaste_hotkey.start()
 
-    # TEMP: not switching to accessory — testing menu bar visibility
-    # threading.Thread(target=_hide_from_dock_later, daemon=True).start()
+    # Hide the Python/Dock icon. macOS requires the status item to be
+    # registered while the app is in "Regular" activation policy; once
+    # rumps has done that we flip to "Accessory" (== LSUIElement), which
+    # removes the Dock icon but keeps the menu-bar item alive. The 1.2s
+    # delay inside _hide_from_dock_later gives rumps time to fully wire
+    # up the NSStatusItem before we change policy.
+    threading.Thread(target=_hide_from_dock_later, daemon=True).start()
 
     log.info("Whisper Dictation started (mode=%s, hotkey=%s).",
              S.get("mode"), S.get("hotkey"))

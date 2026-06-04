@@ -6,7 +6,7 @@
       "area": "stats",
       "desc": "record_transcribe increments by_model correctly",
       "status": "PASS",
-      "ms": 25,
+      "ms": 10,
       "error": null
     },
     {
@@ -14,7 +14,7 @@
       "area": "stats",
       "desc": "paid_seconds excludes local, local_seconds separated",
       "status": "PASS",
-      "ms": 27,
+      "ms": 4,
       "error": null
     },
     {
@@ -22,7 +22,7 @@
       "area": "stats",
       "desc": "GPT token cost computed correctly",
       "status": "PASS",
-      "ms": 64,
+      "ms": 2,
       "error": null
     },
     {
@@ -30,7 +30,7 @@
       "area": "stats",
       "desc": "10 threads \u00d7 100 increments \u2014 no lost writes",
       "status": "PASS",
-      "ms": 1932,
+      "ms": 720,
       "error": null
     },
     {
@@ -38,7 +38,7 @@
       "area": "stats",
       "desc": "SQL-injection-like model name handled via parameterized query",
       "status": "PASS",
-      "ms": 8,
+      "ms": 2,
       "error": null
     },
     {
@@ -46,7 +46,7 @@
       "area": "stats",
       "desc": "word count increments across dictations",
       "status": "PASS",
-      "ms": 6,
+      "ms": 1,
       "error": null
     },
     {
@@ -54,7 +54,7 @@
       "area": "stats",
       "desc": "empty text/zero seconds doesn't add rows",
       "status": "PASS",
-      "ms": 3,
+      "ms": 1,
       "error": null
     }
   ]

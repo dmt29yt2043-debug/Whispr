@@ -119,5 +119,55 @@ def test_repaste_empty():
     assert ok is False
 
 
+@case("TC_INJ_REPASTE_RESTORES_CLIPBOARD", "injector",
+      "after re-paste, original clipboard content is restored — user's copied data is preserved")
+def test_repaste_restores_clipboard():
+    """The whole point of using re-paste over a normal Cmd+V dance:
+    the user's clipboard (a URL, a snippet, anything) must come back
+    intact after the dictation is pasted."""
+    user_clipboard = "https://example.com/important-url"
+    pyperclip.copy(user_clipboard)
+    injector.set_last_transcription("dictated text to paste again")
+
+    with patch.object(injector, "_press_cmd_v"):
+        ok = injector.repaste_last()
+    assert ok is True
+
+    # Restore happens in a background thread after ~600ms.
+    # Wait up to 2s for it.
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        if pyperclip.paste() == user_clipboard:
+            break
+        time.sleep(0.05)
+    assert pyperclip.paste() == user_clipboard, (
+        f"clipboard not restored — got {pyperclip.paste()!r}"
+    )
+
+
+@case("TC_INJ_REPASTE_HONORS_USER_NEW_COPY", "injector",
+      "if user copies something new during re-paste, we do NOT clobber it on restore")
+def test_repaste_does_not_clobber_user_copy():
+    """During the 600ms restore delay, the user might Cmd+C something else.
+    Restore logic must detect this and skip the restore."""
+    pyperclip.copy("original clip")
+    injector.set_last_transcription("dictated")
+
+    with patch.object(injector, "_press_cmd_v"):
+        ok = injector.repaste_last()
+    assert ok is True
+
+    # Simulate user copying something NEW immediately after re-paste.
+    # The restore thread sleeps 0.6s before acting.
+    time.sleep(0.1)
+    pyperclip.copy("user's brand-new copy")
+
+    # Wait past the restore delay
+    time.sleep(0.9)
+    assert pyperclip.paste() == "user's brand-new copy", (
+        "restore overwrote the user's new copy (data loss bug)"
+    )
+
+
 if __name__ == "__main__":
     run_all("test_injector")

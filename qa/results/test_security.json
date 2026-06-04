@@ -6,7 +6,7 @@
       "area": "security",
       "desc": "SQL injection attempt via model name is parameterized safely",
       "status": "PASS",
-      "ms": 16,
+      "ms": 3,
       "error": null
     },
     {
@@ -14,7 +14,7 @@
       "area": "security",
       "desc": "afplay fallback uses subprocess, no shell interpolation",
       "status": "PASS",
-      "ms": 9,
+      "ms": 1,
       "error": null
     },
     {
@@ -22,7 +22,7 @@
       "area": "security",
       "desc": "replacement value with HTML/script stored unchanged, no exec",
       "status": "PASS",
-      "ms": 1,
+      "ms": 0,
       "error": null
     },
     {
@@ -30,7 +30,7 @@
       "area": "security",
       "desc": "replacements stored inside config dir only; traversal keys = just data",
       "status": "PASS",
-      "ms": 1,
+      "ms": 0,
       "error": null
     },
     {
