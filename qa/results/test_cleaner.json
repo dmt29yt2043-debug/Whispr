@@ -22,7 +22,7 @@
       "area": "cleaner",
       "desc": "speech with fillers triggers GPT call",
       "status": "PASS",
-      "ms": 7,
+      "ms": 15,
       "error": null
     },
     {
@@ -61,6 +61,38 @@
       "id": "TC_CLEANER_NO_API_KEY",
       "area": "cleaner",
       "desc": "no API key \u2192 raw text (no crash)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_CLEANER_SINGLE_FILLER_SKIPS",
+      "area": "cleaner",
+      "desc": "a single lone filler word in clean text does NOT trigger the GPT rewrite",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_CLEANER_MANY_FILLERS_TRIGGER",
+      "area": "cleaner",
+      "desc": "two or more filler words still trigger the cleanup",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_CLEANER_WALL_OF_TEXT_TRIGGERS",
+      "area": "cleaner",
+      "desc": "long unpunctuated dump still triggers 'needs formatting'",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_CLEANER_PUNCTUATED_LONG_SKIPS",
+      "area": "cleaner",
+      "desc": "well-punctuated long dictation (avg sentence \u226435 words) skips cleanup",
       "status": "PASS",
       "ms": 0,
       "error": null

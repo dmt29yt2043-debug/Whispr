@@ -117,5 +117,44 @@ def test_no_api_key():
             os.environ["OPENAI_API_KEY"] = prev
 
 
+@case("TC_CLEANER_SINGLE_FILLER_SKIPS", "cleaner",
+      "a single lone filler word in clean text does NOT trigger the GPT rewrite")
+def test_single_filler_skips():
+    """Regression: single 'вот' in an already-punctuated dictation used to
+    cost a ~5s GPT rewrite for zero visible change. Now ≥2 hits required."""
+    txt = ("Вот тебе база для нового слайда. Сделай похожую структуру. "
+           "Потом посмотрим на цвета и шрифты. Это важно для клиента.")
+    reasons = cleaner._cleanup_reasons(txt)
+    assert reasons == [], f"single filler must not trigger cleanup, got {reasons}"
+
+
+@case("TC_CLEANER_MANY_FILLERS_TRIGGER", "cleaner",
+      "two or more filler words still trigger the cleanup")
+def test_many_fillers_trigger():
+    txt = ("Ну короче я типа хотел сказать что нам надо переделать "
+           "весь дизайн потому что клиент недоволен цветами и шрифтами")
+    reasons = cleaner._cleanup_reasons(txt)
+    assert "fillers" in reasons, f"expected fillers trigger, got {reasons}"
+
+
+@case("TC_CLEANER_WALL_OF_TEXT_TRIGGERS", "cleaner",
+      "long unpunctuated dump still triggers 'needs formatting'")
+def test_wall_of_text_triggers():
+    txt = " ".join(["слово"] * 60)  # 60 words, zero punctuation
+    reasons = cleaner._cleanup_reasons(txt)
+    assert "needs formatting" in reasons, f"got {reasons}"
+
+
+@case("TC_CLEANER_PUNCTUATED_LONG_SKIPS", "cleaner",
+      "well-punctuated long dictation (avg sentence ≤35 words) skips cleanup")
+def test_punctuated_long_skips():
+    # 6 sentences × 14 words → avg 14 words/sentence, no fillers.
+    sentence = ("Мы обсудили планы на следующую неделю и решили начать "
+                "с самых важных задач проекта.")
+    txt = " ".join([sentence] * 6)
+    reasons = cleaner._cleanup_reasons(txt)
+    assert reasons == [], f"expected no cleanup, got {reasons}"
+
+
 if __name__ == "__main__":
     run_all("test_cleaner")

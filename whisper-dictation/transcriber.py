@@ -10,6 +10,7 @@ Post-processing with anti-hallucination filter.
 
 import os
 import logging
+import threading
 from typing import Optional
 
 from openai import OpenAI
@@ -44,13 +45,155 @@ def _audio_duration_seconds(path: str) -> float:
 _local_model = None
 
 
+_client_cache: Optional[OpenAI] = None
+_client_lock = threading.Lock()
+_http_client_cache = None
+
+
+def _get_shared_http_client():
+    """One process-wide httpx.Client = one connection pool for ALL OpenAI
+    calls (transcription here, GPT cleanup in cleaner.py).
+
+    Why: a fresh client per call meant a fresh TCP+TLS handshake per
+    dictation (~100-300ms), and the follow-up cleanup call paid a SECOND
+    handshake. With a shared pool the cleanup request rides the socket the
+    transcription just used. keepalive_expiry is raised from httpx's 5s
+    default to 120s so the connection also survives gaps between
+    dictations. Returns None if httpx is unavailable (SDK default then).
+    """
+    global _http_client_cache
+    if _http_client_cache is not None:
+        return _http_client_cache
+    with _client_lock:
+        if _http_client_cache is None:
+            try:
+                import httpx
+                _http_client_cache = httpx.Client(
+                    limits=httpx.Limits(
+                        max_keepalive_connections=5,
+                        keepalive_expiry=120.0,
+                    ),
+                    timeout=httpx.Timeout(600.0, connect=10.0),
+                )
+            except Exception:
+                return None
+    return _http_client_cache
+
+
 def _get_openai_client() -> Optional[OpenAI]:
+    """Cached OpenAI client on top of the shared connection pool."""
+    global _client_cache
+    if _client_cache is not None:
+        return _client_cache
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         return None
-    # max_retries=0 — we own the fallback strategy and want failures to
-    # surface in <1s instead of waiting through OpenAI's default 3 retries.
-    return OpenAI(api_key=api_key, max_retries=_API_MAX_RETRIES)
+    with _client_lock:
+        if _client_cache is None:
+            # max_retries=0 — we own the fallback strategy and want failures
+            # to surface in <1s instead of OpenAI's default 3 retries.
+            _client_cache = OpenAI(
+                api_key=api_key,
+                max_retries=_API_MAX_RETRIES,
+                http_client=_get_shared_http_client_unlocked(),
+            )
+    return _client_cache
+
+
+def _get_shared_http_client_unlocked():
+    """Variant of _get_shared_http_client safe to call while holding
+    _client_lock (plain build, no locking)."""
+    global _http_client_cache
+    if _http_client_cache is None:
+        try:
+            import httpx
+            _http_client_cache = httpx.Client(
+                limits=httpx.Limits(
+                    max_keepalive_connections=5,
+                    keepalive_expiry=120.0,
+                ),
+                timeout=httpx.Timeout(600.0, connect=10.0),
+            )
+        except Exception:
+            return None
+    return _http_client_cache
+
+
+_last_prewarm = 0.0
+
+
+def prewarm_connection() -> None:
+    """Open the TLS connection to api.openai.com while the user is speaking.
+
+    Called (in a background thread) when recording STARTS. By the time the
+    user releases the key, the connection pool already has a warm socket,
+    so the transcription POST skips the handshake entirely. Throttled to
+    once per 60s; a no-op when the API breaker is open or there's no key.
+    """
+    global _last_prewarm
+    import time as _t
+    if _t.time() - _last_prewarm < 60.0:
+        return
+    if api_status.is_tripped():
+        return
+    client = _get_openai_client()
+    if client is None:
+        return
+    _last_prewarm = _t.time()
+    try:
+        t0 = _t.time()
+        client.with_options(timeout=5.0).models.retrieve("whisper-1")
+        log.debug("Connection prewarmed in %.0fms", (_t.time() - t0) * 1000)
+    except Exception as e:
+        log.debug("Prewarm failed (harmless): %s", e)
+
+
+def _prepare_upload_file(audio_path: str):
+    """Re-encode audio as 16kHz mono FLAC for upload.
+
+    Whisper-family models downsample to 16kHz mono internally, so anything
+    above that is wasted upload bytes. FLAC is lossless and accepted by the
+    API; it halves the size vs PCM WAV at the same rate. Net effect vs a
+    48kHz WAV: ~6× smaller upload; vs the usual 16kHz VAD output: ~2×.
+
+    Returns (path, is_temp). On any failure returns the original path —
+    upload compression is an optimisation, never a correctness gate.
+    """
+    try:
+        import tempfile
+        import numpy as np
+        import soundfile as sf
+
+        data, sr = sf.read(audio_path, dtype="float32", always_2d=False)
+        if getattr(data, "ndim", 1) > 1:
+            data = data.mean(axis=1)
+        if sr > 16000:
+            if sr % 16000 == 0:
+                data = data[:: sr // 16000]
+            else:
+                n_out = int(len(data) * 16000 / sr)
+                data = np.interp(
+                    np.linspace(0, len(data) - 1, n_out),
+                    np.arange(len(data)),
+                    data,
+                ).astype("float32")
+            sr = 16000
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".flac", delete=False, prefix="upl_")
+        tmp.close()
+        sf.write(tmp.name, data, sr, format="FLAC", subtype="PCM_16")
+
+        try:
+            orig_kb = os.path.getsize(audio_path) / 1024
+            flac_kb = os.path.getsize(tmp.name) / 1024
+            log.info("Upload prep: %.0f KB WAV → %.0f KB FLAC @16kHz (%.1f×)",
+                     orig_kb, flac_kb, orig_kb / max(flac_kb, 1))
+        except Exception:
+            pass
+        return tmp.name, True
+    except Exception as e:
+        log.debug("Upload prep failed, sending original: %s", e)
+        return audio_path, False
 
 
 def _get_local_model():
@@ -119,6 +262,8 @@ def _call_openai_transcribe(client, audio_path: str, model_name: str) -> Optiona
     transcription will skip the API entirely and go straight to local.
     """
     try:
+        import time as _t
+        t0 = _t.time()
         with open(audio_path, "rb") as f:
             response = client.audio.transcriptions.create(
                 model=model_name,
@@ -128,7 +273,8 @@ def _call_openai_transcribe(client, audio_path: str, model_name: str) -> Optiona
         duration = _audio_duration_seconds(audio_path)
         if duration > 0:
             _stats.record_transcribe(model_name, duration)
-        log.info("Transcribed via %s (%d chars)", model_name, len(text))
+        log.info("Transcribed via %s (%d chars, API %.2fs)",
+                 model_name, len(text), _t.time() - t0)
         return text
     except Exception as e:
         log.warning("Transcription via %s failed: %s", model_name, e)
@@ -155,49 +301,60 @@ def _transcribe_api(audio_path: str) -> Optional[str]:
     duration = _audio_duration_seconds(audio_path)
     is_long = duration > _LONG_AUDIO_SECONDS
 
-    # Long audio: skip gpt-4o-* entirely, go straight to whisper-1.
-    # gpt-4o-transcribe will reliably return a partial result on long
-    # clips, which would defeat the chars/sec sanity check below.
-    if is_long:
-        log.info("Audio %.1fs > %.1fs — using %s for full-length transcription",
-                 duration, _LONG_AUDIO_SECONDS, _LONG_AUDIO_MODEL)
-        text = _call_openai_transcribe(client, audio_path, _LONG_AUDIO_MODEL)
-        if text or api_status.is_tripped():
-            # If breaker tripped during the call, don't try more models.
-            return text
-        # whisper-1 failed for non-quota reason — try mini as last resort
-        return _call_openai_transcribe(client, audio_path, _FALLBACK_MODEL)
+    # Shrink the upload: 16kHz mono FLAC. The API resamples to 16k anyway;
+    # sending 48kHz PCM is pure upload-time waste (2-6× larger payload).
+    upload_path, is_temp = _prepare_upload_file(audio_path)
 
-    # Short audio: try gpt-4o-transcribe → mini → whisper-1
-    last_text: Optional[str] = None
-    for model_name in (_PRIMARY_MODEL, _FALLBACK_MODEL, _LONG_AUDIO_MODEL):
-        # Bail out of the fallback chain the moment we know the API is
-        # down — saves ~7s of guaranteed-to-fail attempts.
-        if api_status.is_tripped():
-            log.info("Breaker tripped mid-chain — skipping remaining models")
-            break
-        text = _call_openai_transcribe(client, audio_path, model_name)
-        if text is None:
-            continue  # API error — try next
-        if not text:
-            log.info("%s returned empty, trying next model", model_name)
-            last_text = text
-            continue
-        # Sanity-check: detect silent truncation. If we get < _MIN_CHARS_PER_SEC
-        # for non-trivial audio, the model probably returned only its first
-        # phrase. Fall back to whisper-1 which doesn't have this bug.
-        if duration > 3.0 and model_name != _LONG_AUDIO_MODEL:
-            cps = len(text) / duration
-            if cps < _MIN_CHARS_PER_SEC:
-                log.warning(
-                    "%s returned %d chars for %.1fs (%.1f c/s) — looks truncated, "
-                    "retrying with %s", model_name, len(text), duration, cps,
-                    _LONG_AUDIO_MODEL,
-                )
+    try:
+        # Long audio: skip gpt-4o-* entirely, go straight to whisper-1.
+        # gpt-4o-transcribe will reliably return a partial result on long
+        # clips, which would defeat the chars/sec sanity check below.
+        if is_long:
+            log.info("Audio %.1fs > %.1fs — using %s for full-length transcription",
+                     duration, _LONG_AUDIO_SECONDS, _LONG_AUDIO_MODEL)
+            text = _call_openai_transcribe(client, upload_path, _LONG_AUDIO_MODEL)
+            if text or api_status.is_tripped():
+                # If breaker tripped during the call, don't try more models.
+                return text
+            # whisper-1 failed for non-quota reason — try mini as last resort
+            return _call_openai_transcribe(client, upload_path, _FALLBACK_MODEL)
+
+        # Short audio: try gpt-4o-transcribe → mini → whisper-1
+        last_text: Optional[str] = None
+        for model_name in (_PRIMARY_MODEL, _FALLBACK_MODEL, _LONG_AUDIO_MODEL):
+            # Bail out of the fallback chain the moment we know the API is
+            # down — saves ~7s of guaranteed-to-fail attempts.
+            if api_status.is_tripped():
+                log.info("Breaker tripped mid-chain — skipping remaining models")
+                break
+            text = _call_openai_transcribe(client, upload_path, model_name)
+            if text is None:
+                continue  # API error — try next
+            if not text:
+                log.info("%s returned empty, trying next model", model_name)
                 last_text = text
                 continue
-        return text
-    return last_text
+            # Sanity-check: detect silent truncation. If we get < _MIN_CHARS_PER_SEC
+            # for non-trivial audio, the model probably returned only its first
+            # phrase. Fall back to whisper-1 which doesn't have this bug.
+            if duration > 3.0 and model_name != _LONG_AUDIO_MODEL:
+                cps = len(text) / duration
+                if cps < _MIN_CHARS_PER_SEC:
+                    log.warning(
+                        "%s returned %d chars for %.1fs (%.1f c/s) — looks truncated, "
+                        "retrying with %s", model_name, len(text), duration, cps,
+                        _LONG_AUDIO_MODEL,
+                    )
+                    last_text = text
+                    continue
+            return text
+        return last_text
+    finally:
+        if is_temp:
+            try:
+                os.unlink(upload_path)
+            except OSError:
+                pass
 
 
 def _transcribe_local(audio_path: str) -> Optional[str]:

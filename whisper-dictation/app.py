@@ -523,6 +523,16 @@ class WhisperDictationApp(rumps.App):
             except Exception as e:
                 log.warning("Streaming init failed, will use batch: %s", e)
 
+        # Pre-warm the HTTPS connection to api.openai.com WHILE the user is
+        # speaking. By release time the pool has a live socket, so the
+        # transcription POST skips the TCP+TLS handshake. Throttled inside.
+        if S.get("mode", S.MODE_AUTO) != S.MODE_LOCAL:
+            try:
+                import transcriber as _tr
+                threading.Thread(target=_tr.prewarm_connection, daemon=True).start()
+            except Exception:
+                pass
+
         log.info("Recording started (app: %s)", self._recording_bundle_id)
 
     def _on_record_stop(self) -> None:

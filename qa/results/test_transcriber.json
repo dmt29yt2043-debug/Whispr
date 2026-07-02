@@ -6,7 +6,7 @@
       "area": "transcriber",
       "desc": "short audio (\u22648s) with realistic chars/sec \u2192 returns gpt-4o-transcribe result, no fallback",
       "status": "PASS",
-      "ms": 0,
+      "ms": 43,
       "error": null
     },
     {
@@ -69,6 +69,30 @@
       "id": "TC_TRANSCRIBE_REAL_15S_NO_TRUNCATION",
       "area": "transcriber",
       "desc": "regression: 15s audio that we logged returning 73 chars now goes to whisper-1",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSCRIBE_CLIENT_CACHED",
+      "area": "transcriber",
+      "desc": "_get_openai_client returns the SAME instance across calls (connection pool reuse)",
+      "status": "PASS",
+      "ms": 9,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSCRIBE_FLAC_UPLOAD_PREP",
+      "area": "transcriber",
+      "desc": "48kHz WAV is re-encoded to 16kHz mono FLAC, much smaller, same duration",
+      "status": "PASS",
+      "ms": 21,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSCRIBE_UPLOAD_PREP_MISSING_FILE",
+      "area": "transcriber",
+      "desc": "upload prep on unreadable file falls back to the original path (no crash)",
       "status": "PASS",
       "ms": 0,
       "error": null

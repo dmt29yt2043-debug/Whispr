@@ -201,5 +201,69 @@ def test_regression_15s():
     assert calls == ["whisper-1"]
 
 
+@case("TC_TRANSCRIBE_CLIENT_CACHED", "transcriber",
+      "_get_openai_client returns the SAME instance across calls (connection pool reuse)")
+def test_client_cached():
+    import os
+    transcriber._client_cache = None  # reset module state
+    old = os.environ.get("OPENAI_API_KEY")
+    os.environ["OPENAI_API_KEY"] = "sk-test-fake-key"
+    try:
+        c1 = transcriber._get_openai_client()
+        c2 = transcriber._get_openai_client()
+        assert c1 is not None
+        assert c1 is c2, "client must be cached — new client per call = new TLS handshake"
+    finally:
+        transcriber._client_cache = None
+        if old is None:
+            os.environ.pop("OPENAI_API_KEY", None)
+        else:
+            os.environ["OPENAI_API_KEY"] = old
+
+
+@case("TC_TRANSCRIBE_FLAC_UPLOAD_PREP", "transcriber",
+      "48kHz WAV is re-encoded to 16kHz mono FLAC, much smaller, same duration")
+def test_flac_upload_prep():
+    import os
+    import tempfile
+    import numpy as np
+    import soundfile as sf
+
+    # 2 seconds of 48kHz speech-band noise (compressible but non-trivial)
+    sr = 48000
+    rng = np.random.RandomState(42)
+    data = (0.1 * np.sin(2 * np.pi * 220 * np.linspace(0, 2, sr * 2))
+            + 0.02 * rng.randn(sr * 2)).astype("float32")
+    wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    wav.close()
+    sf.write(wav.name, data, sr, subtype="PCM_16")
+
+    path, is_temp = transcriber._prepare_upload_file(wav.name)
+    try:
+        assert is_temp, "should have produced a temp FLAC"
+        assert path.endswith(".flac")
+        info = sf.info(path)
+        assert info.samplerate == 16000, f"expected 16kHz, got {info.samplerate}"
+        dur = info.frames / info.samplerate
+        assert abs(dur - 2.0) < 0.05, f"duration changed: {dur}"
+        wav_size = os.path.getsize(wav.name)
+        flac_size = os.path.getsize(path)
+        assert flac_size < wav_size / 2, (
+            f"FLAC not smaller enough: {flac_size} vs {wav_size}"
+        )
+    finally:
+        os.unlink(wav.name)
+        if is_temp:
+            os.unlink(path)
+
+
+@case("TC_TRANSCRIBE_UPLOAD_PREP_MISSING_FILE", "transcriber",
+      "upload prep on unreadable file falls back to the original path (no crash)")
+def test_upload_prep_fallback():
+    path, is_temp = transcriber._prepare_upload_file("/tmp/definitely-missing-file.wav")
+    assert path == "/tmp/definitely-missing-file.wav"
+    assert is_temp is False
+
+
 if __name__ == "__main__":
     run_all("test_transcriber")

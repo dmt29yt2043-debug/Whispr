@@ -14,7 +14,7 @@
       "area": "hotkey",
       "desc": "single short tap \u2192 start + stop after double-tap timeout",
       "status": "PASS",
-      "ms": 463,
+      "ms": 460,
       "error": null
     },
     {
@@ -30,7 +30,7 @@
       "area": "hotkey",
       "desc": "in toggle mode, next press stops recording",
       "status": "PASS",
-      "ms": 554,
+      "ms": 555,
       "error": null
     },
     {

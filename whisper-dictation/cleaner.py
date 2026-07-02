@@ -42,8 +42,24 @@ def _needs_formatting(text: str) -> bool:
     endings = len(_SENTENCE_END_RE.findall(text))
     if endings == 0:
         return True  # no punctuation at all — definitely needs formatting
-    # Average sentence length above ~25 words = likely missing breaks
-    return n_words / endings > 25
+    # Average sentence length above ~35 words = likely missing breaks.
+    # (Was 25 — but modern transcribe models punctuate well, and 25 kept
+    # sending normally-punctuated dictations through a multi-second GPT
+    # rewrite for no visible gain.)
+    return n_words / endings > 35
+
+
+def _cleanup_reasons(text: str):
+    """Return the list of reasons GPT cleanup should run (empty = skip).
+
+    Split out from clean_text so the trigger policy is unit-testable.
+    """
+    reasons = []
+    if len(_FILLER_RE.findall(text)) >= 2:
+        reasons.append("fillers")
+    if _needs_formatting(text):
+        reasons.append("needs formatting")
+    return reasons
 
 
 _TONE_INSTRUCTIONS = {
@@ -133,16 +149,17 @@ def clean_text(raw_text: str, bundle_id: Optional[str] = None) -> str:
         return raw_text
 
     # Trigger GPT if either:
-    #   - text has filler words to remove, OR
+    #   - text has a NOTICEABLE amount of filler words (≥2 hits), OR
     #   - text is long and poorly punctuated (needs sentence/paragraph breaks)
-    has_fillers = bool(_FILLER_RE.search(raw_text))
-    needs_format = _needs_formatting(raw_text)
-    if not has_fillers and not needs_format:
+    #
+    # Why ≥2: single Russian words like "вот"/"значит"/"в общем" are
+    # perfectly normal prose, and a lone hit used to send an already-clean
+    # 30s dictation through a ~5s GPT rewrite. Cleanup latency must buy
+    # visible value.
+    reasons = _cleanup_reasons(raw_text)
+    if not reasons:
         log.info("Clean + well-formatted text — skipping cleanup")
         return raw_text
-    reasons = []
-    if has_fillers: reasons.append("fillers")
-    if needs_format: reasons.append("needs formatting")
     log.info("Cleanup triggered: %s (%d words)", ", ".join(reasons), word_count)
 
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -157,10 +174,19 @@ def clean_text(raw_text: str, bundle_id: Optional[str] = None) -> str:
         return raw_text
 
     try:
-        # max_retries=0: cleanup is best-effort and the OpenAI client's
-        # default 2 retries with backoff add ~3.5s on a definite failure
-        # (e.g. quota exhausted) for no benefit.
-        client = OpenAI(api_key=api_key, max_retries=0)
+        # Share transcriber's httpx connection pool: the cleanup request
+        # rides the SAME keep-alive socket the transcription call just
+        # used, skipping a fresh TCP+TLS handshake (~100-300ms saved).
+        # max_retries=0 — cleanup is best-effort, fail fast.
+        http_client = None
+        try:
+            from transcriber import _get_shared_http_client
+            http_client = _get_shared_http_client()
+        except Exception:
+            pass
+        client = OpenAI(api_key=api_key, max_retries=0, http_client=http_client)
+        import time as _t
+        t0 = _t.time()
         system_prompt = _build_system_prompt(
             tone=tone,
             always_english=S.get("always_english", False),
@@ -175,6 +201,7 @@ def clean_text(raw_text: str, bundle_id: Optional[str] = None) -> str:
             temperature=0.2,
             max_tokens=2048,
         )
+        log.info("GPT cleanup call took %.2fs", _t.time() - t0)
         # BUG FIX #14: content can be None when finish_reason='content_filter'
         content = response.choices[0].message.content
         if content is None:
