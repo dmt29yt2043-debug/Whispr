@@ -1,0 +1,37 @@
+{
+  "script": "test_overlay_screen",
+  "results": [
+    {
+      "id": "TC_OVL_PICK_PRIMARY",
+      "area": "overlay",
+      "desc": "window on the primary MacBook screen \u2192 primary picked",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_OVL_PICK_SECONDARY_ABOVE",
+      "area": "overlay",
+      "desc": "window near the top of a 4K monitor above the MacBook \u2192 monitor picked (old code returned None)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_OVL_PICK_SIDE_BY_SIDE",
+      "area": "overlay",
+      "desc": "side-by-side arrangement: window on the right monitor \u2192 right monitor picked",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_OVL_PICK_NOWHERE",
+      "area": "overlay",
+      "desc": "point outside every screen \u2192 None (caller falls back to mouse)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    }
+  ]
+}

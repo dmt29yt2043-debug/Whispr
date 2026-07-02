@@ -33,6 +33,10 @@ _kCGKeyboardEventKeycode = 6
 _V_KEYCODE = 9
 _ESCAPE_KEYCODE = 53
 
+# See hotkey.py: macOS disables slow taps; these pseudo-events tell us.
+_kCGEventTapDisabledByTimeout = 0xFFFFFFFE
+_kCGEventTapDisabledByUserInput = 0xFFFFFFFF
+
 
 class RePasteHotkey:
     """Listens for Cmd+Shift+V (re-paste) and Escape (cancel).
@@ -81,6 +85,17 @@ class RePasteHotkey:
 
     def _event_callback(self, proxy, event_type, event, refcon):
         try:
+            # Re-enable if macOS disabled us (slow callback under load).
+            if event_type in (_kCGEventTapDisabledByTimeout,
+                              _kCGEventTapDisabledByUserInput):
+                log.warning("Re-paste tap disabled by macOS — re-enabling")
+                try:
+                    if self._tap is not None:
+                        CGEventTapEnable(self._tap, True)
+                except Exception:
+                    pass
+                return event
+
             keycode = CGEventGetIntegerValueField(event, _kCGKeyboardEventKeycode)
 
             # Escape — cancel any ongoing recording/processing.

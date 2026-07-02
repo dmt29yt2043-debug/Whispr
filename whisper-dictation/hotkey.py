@@ -42,6 +42,19 @@ log = logging.getLogger(__name__)
 _TAP_DEFAULT = 0  # kCGEventTapOptionDefault (not listenOnly — we can suppress)
 _kCGKeyboardEventKeycode = 6
 
+# macOS silently disables an event tap whose callback is too slow (system
+# under load, wake-from-sleep hiccup) or during certain secure-input
+# transitions. The tap then receives ONE special event with these types
+# and never fires again unless someone calls CGEventTapEnable(tap, True).
+# Symptom without handling: Fn key "dies" until app restart.
+_kCGEventTapDisabledByTimeout = 0xFFFFFFFE
+_kCGEventTapDisabledByUserInput = 0xFFFFFFFF
+
+# Watchdog: belt-and-suspenders for the case where the disabled event
+# itself is dropped. Every _WATCHDOG_INTERVAL seconds we ask the OS if
+# the tap is still enabled and re-enable it if not.
+_WATCHDOG_INTERVAL = 20.0
+
 # ── NSEvent flag masks ───────────────────────────────────────────────
 # Main modifier bits
 _FLAG_OPTION = 0x80000
@@ -244,7 +257,37 @@ class FnKeyHandler:
         self._tap = tap
         self._source = source
         log.info("Hotkey tap installed: %s (mode=%s)", self._key_name, self._mode)
+        self._start_tap_watchdog()
         return True
+
+    def _start_tap_watchdog(self) -> None:
+        """Background thread that re-enables the tap if macOS disabled it.
+
+        macOS turns a tap off when its callback misses the latency budget
+        (heavy CPU load — e.g. local whisper decoding — or a wake glitch).
+        Without this, the hotkey stays dead until the app is restarted,
+        which users experience as "the app randomly stopped working".
+        """
+        if getattr(self, "_watchdog_started", False):
+            return
+        self._watchdog_started = True
+
+        def _watch():
+            from Quartz import CGEventTapIsEnabled
+            while True:
+                time.sleep(_WATCHDOG_INTERVAL)
+                tap = self._tap
+                if tap is None:
+                    continue
+                try:
+                    if not CGEventTapIsEnabled(tap):
+                        log.warning("Hotkey tap found disabled — re-enabling")
+                        CGEventTapEnable(tap, True)
+                except Exception as e:
+                    log.debug("Tap watchdog check failed: %s", e)
+
+        threading.Thread(target=_watch, daemon=True,
+                         name="hotkey-tap-watchdog").start()
 
     def restart_with_new_key(self) -> None:
         """Hotkey change requires app restart (can't reinstall a CGEventTap safely)."""
@@ -254,6 +297,20 @@ class FnKeyHandler:
 
     def _event_callback(self, proxy, event_type, event, refcon):
         try:
+            # macOS disabled our tap (slow callback / secure input). This
+            # arrives as a special pseudo-event; re-enable immediately so
+            # the very next real keypress works.
+            if event_type in (_kCGEventTapDisabledByTimeout,
+                              _kCGEventTapDisabledByUserInput):
+                log.warning("Hotkey tap disabled by macOS (type=0x%X) — re-enabling",
+                            event_type)
+                try:
+                    if self._tap is not None:
+                        CGEventTapEnable(self._tap, True)
+                except Exception as e:
+                    log.error("Failed to re-enable tap: %s", e)
+                return event
+
             now = time.time()
 
             if self._mode in ("mod", "fn"):

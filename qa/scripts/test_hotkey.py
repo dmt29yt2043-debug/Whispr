@@ -157,5 +157,59 @@ def test_debounce_rapid_press():
         f"debounce failed — expected start=1, got {calls}"
 
 
+# ─────────────────── Tap-disabled self-heal (watchdog) ───────────────────
+
+@case("TC_HK_TAP_DISABLED_REENABLE", "hotkey",
+      "kCGEventTapDisabledByTimeout pseudo-event → callback re-enables tap, no state change")
+def test_tap_disabled_reenables():
+    """macOS disables a tap whose callback is slow; the tap gets one
+    pseudo-event with type kCGEventTapDisabledByTimeout. The callback must
+    call CGEventTapEnable(tap, True) and NOT touch the press/release state
+    machine. Regression for 'Fn dies until app restart'."""
+    import hotkey as hk
+
+    h, calls = _make_handler()
+
+    # Give the handler a fake tap and intercept CGEventTapEnable.
+    reenabled = []
+    h._tap = object()  # sentinel — only identity is used
+    orig_enable = hk.CGEventTapEnable
+    hk.CGEventTapEnable = lambda tap, on: reenabled.append((tap, on))
+    try:
+        result = h._event_callback(
+            None, hk._kCGEventTapDisabledByTimeout, "fake-event", None
+        )
+    finally:
+        hk.CGEventTapEnable = orig_enable
+
+    assert result == "fake-event", "pseudo-event must be passed through"
+    assert reenabled == [(h._tap, True)], (
+        f"tap must be re-enabled exactly once, got {reenabled}"
+    )
+    assert calls == {"start": 0, "stop": 0}, (
+        "disabled pseudo-event must not trigger the state machine"
+    )
+    assert h._key_down is False
+
+
+@case("TC_HK_TAP_DISABLED_BY_USER_INPUT", "hotkey",
+      "kCGEventTapDisabledByUserInput pseudo-event also re-enables")
+def test_tap_disabled_by_user_input():
+    import hotkey as hk
+
+    h, calls = _make_handler()
+    reenabled = []
+    h._tap = object()
+    orig_enable = hk.CGEventTapEnable
+    hk.CGEventTapEnable = lambda tap, on: reenabled.append(on)
+    try:
+        h._event_callback(None, hk._kCGEventTapDisabledByUserInput, "evt", None)
+    finally:
+        hk.CGEventTapEnable = orig_enable
+
+    assert reenabled == [True]
+    assert calls == {"start": 0, "stop": 0}
+
+
 if __name__ == "__main__":
     run_all("test_hotkey")

@@ -195,7 +195,15 @@ class WhisperDictationApp(rumps.App):
                 quit_button=None,
             )
         else:
-            super().__init__(_ICON_IDLE_FALLBACK, quit_button=None)
+            super().__init__(ICON_IDLE, quit_button=None)
+
+        # Last-applied menu bar state (icon path, template, title) — used
+        # by _reassert_menu_icon() to restore the glyph after display
+        # reconfigurations. Matches what super().__init__ just applied.
+        self._bar_state = (
+            (_MENU_BAR_ICON_IDLE or None, False, None)
+            if _MENU_BAR_ICON_IDLE else (None, None, ICON_IDLE)
+        )
 
         # Ensure settings exist on disk
         S.load()
@@ -258,6 +266,11 @@ class WhisperDictationApp(rumps.App):
         # interfere if a recording is somehow already running at wake.
         self._install_wake_observer()
 
+        # Re-assert the menu-bar icon after monitor plug/unplug or wake —
+        # macOS occasionally drops status-item images during display
+        # reconfiguration, which users saw as "the icon disappeared".
+        self._install_screen_change_observer()
+
         # Surface API outages (quota exhausted) as a one-shot notification
         # rather than letting the user wait through 20s of silent retries.
         try:
@@ -291,9 +304,14 @@ class WhisperDictationApp(rumps.App):
             from Foundation import NSObject
             recorder = self.recorder
 
+            outer = self
+
             class _WakeObserver(NSObject):
                 def wakeFromSleep_(self, _notification):
                     recorder.mark_subsystem_dirty(reason="wake-from-sleep")
+                    # Wake often comes with a display-config change (lid
+                    # opened, dock reconnected) — refresh the menu icon too.
+                    outer._reassert_menu_icon(delay=2.0)
 
             self._wake_observer = _WakeObserver.alloc().init()
             nc = NSWorkspace.sharedWorkspace().notificationCenter()
@@ -382,10 +400,21 @@ class WhisperDictationApp(rumps.App):
             # template=False — coloured icon, see __init__ for rationale
             target_icon, target_template = _MENU_BAR_ICON_IDLE, False
             target_title = None
+        elif title == ICON_PROCESSING and _MENU_BAR_ICON_IDLE:
+            # Keep the mic glyph and show the hourglass NEXT to it.
+            # Never set icon=None here: a status item whose icon
+            # assignment later fails while title is also empty renders
+            # ZERO-width — i.e. the icon "vanishes" from the menu bar.
+            target_icon, target_template = _MENU_BAR_ICON_IDLE, False
+            target_title = title
         else:
-            # Processing or unexpected state — fall back to text/emoji
+            # No custom icons available — fall back to text/emoji only
             target_icon, target_template = None, None
             target_title = title
+
+        # Remember the desired state so _reassert_menu_icon() can restore
+        # it after display reconfiguration (monitor plug/unplug, wake).
+        self._bar_state = (target_icon, target_template, target_title)
 
         def _do():
             try:
@@ -406,6 +435,66 @@ class WhisperDictationApp(rumps.App):
             except Exception:
                 pass
         AppHelper.callAfter(_do)
+
+    def _reassert_menu_icon(self, delay: float = 1.0) -> None:
+        """Re-apply the last menu-bar state after a display change.
+
+        When a monitor is plugged/unplugged (or the Mac wakes into a
+        different display configuration), macOS rebuilds the menu bar and
+        occasionally drops or blanks status-item images. Re-assigning the
+        same icon path is idempotent and forces the item to redraw. The
+        short delay lets the window server finish reconfiguring first.
+        """
+        state = getattr(self, "_bar_state", None)
+        if state is None:
+            return
+
+        def _later():
+            import time as _t
+            _t.sleep(delay)
+            icon, template, title_text = state
+            from PyObjCTools import AppHelper
+            def _do():
+                try:
+                    if icon is not None:
+                        self.icon = icon
+                        try:
+                            self.template = template
+                        except Exception:
+                            pass
+                        self.title = title_text
+                except Exception:
+                    pass
+            AppHelper.callAfter(_do)
+
+        threading.Thread(target=_later, daemon=True).start()
+
+    def _install_screen_change_observer(self) -> None:
+        """Re-assert the menu-bar icon whenever displays are reconfigured.
+
+        NSApplicationDidChangeScreenParametersNotification fires on monitor
+        connect/disconnect, resolution change, and wake-with-different-
+        displays — exactly the moments users reported the icon vanishing.
+        """
+        try:
+            from Foundation import NSObject, NSNotificationCenter
+            outer = self
+
+            class _ScreenObserver(NSObject):
+                def screensChanged_(self, _note):
+                    log.info("Screen parameters changed — re-asserting menu bar icon")
+                    outer._reassert_menu_icon(delay=1.5)
+
+            self._screen_observer = _ScreenObserver.alloc().init()
+            NSNotificationCenter.defaultCenter().addObserver_selector_name_object_(
+                self._screen_observer,
+                "screensChanged:",
+                "NSApplicationDidChangeScreenParametersNotification",
+                None,
+            )
+            log.info("Screen-change observer installed")
+        except Exception as e:
+            log.warning("Could not install screen-change observer: %s", e)
 
     def _on_record_start(self) -> None:
         # Capture bundle ID FIRST (before UI updates change focus)

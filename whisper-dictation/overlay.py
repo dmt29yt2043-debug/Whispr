@@ -55,6 +55,29 @@ STATE_PROCESSING = "processing"
 STATE_DONE = "done"
 
 
+def _pick_screen_for_cg_point(win_x, win_y_topdown, screen_frames, primary_height):
+    """Map a CGWindow-space point to the index of the screen containing it.
+
+    CG coordinates: top-left origin anchored at the PRIMARY screen's
+    top-left, Y grows downward. Cocoa (NSScreen.frame) coordinates:
+    bottom-left origin at the same primary screen, Y grows upward.
+    Conversion is therefore `cocoa_y = primary_height - cg_y`, where
+    primary_height is screens()[0]'s height — NOT mainScreen()'s (that's
+    the screen with keyboard focus, whose height differs whenever the
+    user works on a secondary display; using it sent the overlay to the
+    wrong monitor).
+
+    screen_frames: list of (x, y, w, h) tuples in Cocoa coordinates.
+    Returns the index into screen_frames, or None if no screen contains
+    the point.
+    """
+    cocoa_y = primary_height - win_y_topdown
+    for i, (x, y, w, h) in enumerate(screen_frames):
+        if x <= win_x <= x + w and y <= cocoa_y <= y + h:
+            return i
+    return None
+
+
 def _lerp(a, b, t):
     return a + (b - a) * t
 
@@ -374,25 +397,23 @@ class StatusOverlay:
         if best is None:
             return None
 
-        # CGWindow uses top-left origin in the "display" coordinate space
-        # where Y grows downward from the menu bar of the main screen.
+        # CGWindow uses top-left origin in the global display space anchored
+        # at the top-left of the PRIMARY screen (NSScreen.screens()[0]).
         # Compute window center in that space:
         win_x = float(best["X"]) + float(best["Width"]) / 2.0
         win_y_topdown = float(best["Y"]) + float(best["Height"]) / 2.0
 
-        # Find the screen containing that center. NSScreen frames use
-        # bottom-left origin, but the menu-bar reference screen height
-        # equals the main screen height; we convert per-screen.
-        main_h = NSScreen.mainScreen().frame().size.height
-        # Convert window center to Cocoa coords (bottom-up).
-        win_y = main_h - win_y_topdown
-
-        for screen in NSScreen.screens():
-            f = screen.frame()
-            if (f.origin.x <= win_x <= f.origin.x + f.size.width and
-                    f.origin.y <= win_y <= f.origin.y + f.size.height):
-                return screen
-        return None
+        screens = NSScreen.screens()
+        if not screens:
+            return None
+        primary_h = screens[0].frame().size.height
+        frames = [
+            (s.frame().origin.x, s.frame().origin.y,
+             s.frame().size.width, s.frame().size.height)
+            for s in screens
+        ]
+        idx = _pick_screen_for_cg_point(win_x, win_y_topdown, frames, primary_h)
+        return screens[idx] if idx is not None else None
 
     def _window_frame_for_screen(self, screen):
         """Compute top-right pill frame on the given screen."""
