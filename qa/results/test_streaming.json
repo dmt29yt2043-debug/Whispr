@@ -1,0 +1,53 @@
+{
+  "script": "test_streaming",
+  "results": [
+    {
+      "id": "TC_STREAM_GA_CONFIG",
+      "area": "streaming",
+      "desc": "session config uses GA shape: session.update / type=transcription / gpt-realtime-whisper",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_STREAM_DELTA_THEN_COMPLETED",
+      "area": "streaming",
+      "desc": "deltas accumulate; completed supersedes them into final text",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_STREAM_TAIL_WITHOUT_COMPLETED",
+      "area": "streaming",
+      "desc": "if completed never arrives, accumulated deltas are still returned (no lost tail)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_STREAM_MULTI_SEGMENT_ACCUMULATE",
+      "area": "streaming",
+      "desc": "multiple completed events accumulate with spaces (long dictations)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_STREAM_ERROR_UNBLOCKS",
+      "area": "streaming",
+      "desc": "error event closes the session and unblocks commit_and_wait",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_STREAM_BETA_ERROR_DISABLES_SESSIONWIDE",
+      "area": "streaming",
+      "desc": "beta_api_shape_disabled error flips the session-wide kill switch",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    }
+  ]
+}

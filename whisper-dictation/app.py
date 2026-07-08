@@ -238,6 +238,7 @@ class WhisperDictationApp(rumps.App):
         self.record_item = rumps.MenuItem("🔴 Start Recording", callback=self._toggle_recording)
         self.stats_item = rumps.MenuItem("📊 Statistics", callback=self._show_stats)
         self.replacements_item = rumps.MenuItem("🔄 Text Replacements", callback=self._show_replacements)
+        self.dictionary_item = rumps.MenuItem("📖 Add Word to Dictionary…", callback=self._add_dictionary_word)
         self.settings_item = rumps.MenuItem("⚙️ Settings", callback=self._show_settings)
         self.quit_item = rumps.MenuItem("Quit", callback=self._quit)
 
@@ -246,6 +247,7 @@ class WhisperDictationApp(rumps.App):
             rumps.separator,
             self.stats_item,
             self.replacements_item,
+            self.dictionary_item,
             self.settings_item,
             rumps.separator,
             self.quit_item,
@@ -335,6 +337,36 @@ class WhisperDictationApp(rumps.App):
             self._on_record_stop()
         else:
             self._on_record_start()
+
+    def _add_dictionary_word(self, _sender=None) -> None:
+        """Menu: add a term to the personal dictionary.
+
+        Terms bias the transcription decoder (batch prompt) and the GPT
+        cleanup pass toward the user's exact spellings — names, brands,
+        project jargon ("Whispr Flow", "RIZY", …).
+        """
+        import dictionary
+        current = dictionary.get_terms()
+        preview = ", ".join(current[-8:]) if current else "(empty)"
+        w = rumps.Window(
+            message=(
+                "Add a name/brand/term the transcriber should spell "
+                "exactly.\nCurrent dictionary (%d): %s" % (len(current), preview)
+            ),
+            title="Personal Dictionary",
+            default_text="", ok="Add", cancel="Cancel",
+            dimensions=(300, 25),
+        )
+        r = w.run()
+        if not r.clicked:
+            return
+        term = r.text.strip()
+        if not term:
+            return
+        if dictionary.add_term(term):
+            self._notify("Dictionary", f"Added: {term}")
+        else:
+            self._notify("Dictionary", f"Already in dictionary: {term}")
 
     def _on_repaste(self) -> None:
         """Triggered by Cmd+Shift+V — re-paste the last transcription."""
@@ -608,12 +640,13 @@ class WhisperDictationApp(rumps.App):
             # or error, silently fall back to batch using the same audio.
             raw_text = None
             streamed_duration = 0.0
-            # Streaming is ONLY trustworthy for short recordings. Longer
-            # ones hit known Realtime API issues: server_vad can miss
-            # final segment after the last speech_started, and manual
-            # commit with turn_detection=null truncates multi-phrase audio.
-            # For >_STREAMING_MAX_SECONDS we always use batch.
-            _STREAMING_MAX_SECONDS = 8.0
+            # GA Realtime (gpt-realtime-whisper) streams transcript deltas
+            # during recording and accumulates them, so ANY recording length
+            # is safe — the old 8s cap existed for the retired beta API
+            # whose gpt-4o models dropped everything after the first pause.
+            # The chars/sec sanity check below stays as the safety net:
+            # a truncated-looking result still falls back to batch.
+            _STREAMING_MAX_SECONDS = 600.0
             try:
                 from transcriber import _audio_duration_seconds
                 audio_duration = _audio_duration_seconds(audio_path)
@@ -623,6 +656,8 @@ class WhisperDictationApp(rumps.App):
             streamer = getattr(self, "_streamer", None)
             if streamer is not None and 0 < audio_duration <= _STREAMING_MAX_SECONDS:
                 try:
+                    import time as _t
+                    _t0 = _t.time()
                     streamed = streamer.commit_and_wait(timeout=6.0)
                     if streamed:
                         from anti_hallucination import filter_transcription
@@ -630,7 +665,7 @@ class WhisperDictationApp(rumps.App):
                         if raw_text:
                             chars_per_sec = len(raw_text) / audio_duration
                             if chars_per_sec < 3.0:
-                                # Still suspicious even for short audio — batch it
+                                # Looks truncated — batch it
                                 log.warning(
                                     "Streaming gave %d chars for %.2fs (%.1f c/s) — "
                                     "likely truncated, falling back to batch",
@@ -639,18 +674,20 @@ class WhisperDictationApp(rumps.App):
                                 raw_text = None
                             else:
                                 streamed_duration = audio_duration
-                                log.info("Streaming transcription succeeded (%d chars for %.1fs)",
-                                         len(raw_text), audio_duration)
+                                log.info(
+                                    "Streaming transcription succeeded "
+                                    "(%d chars for %.1fs audio, wait %.2fs)",
+                                    len(raw_text), audio_duration, _t.time() - _t0)
                                 try:
                                     import stats as _stats
                                     _stats.record_transcribe(
-                                        "gpt-4o-mini-transcribe", audio_duration)
+                                        "gpt-realtime-whisper", audio_duration)
                                 except Exception:
                                     pass
                 except Exception as e:
                     log.warning("Streaming commit failed, falling back to batch: %s", e)
             elif streamer is not None:
-                log.info("Audio %.1fs > %.1fs — skipping streaming, using batch for accuracy",
+                log.info("Audio %.1fs > %.1fs — skipping streaming, using batch",
                          audio_duration, _STREAMING_MAX_SECONDS)
 
             # Close any streaming session in background (both paths) — the
@@ -684,14 +721,21 @@ class WhisperDictationApp(rumps.App):
                 self._reset_ui()
                 return
 
-            # Step 3: Apply text replacements (exact-match overrides cleanup)
-            replaced_text = apply_replacements(raw_text)
-            if replaced_text != raw_text:
-                final_text = replaced_text
-                log.info("Replacement applied")
+            # Step 3a: Voice snippets — if the whole dictation is a snippet
+            # trigger ("моя подпись"), paste the template and skip cleanup.
+            import snippets as _snippets
+            snippet_text = _snippets.expand(raw_text)
+            if snippet_text is not None:
+                final_text = snippet_text
             else:
-                # Step 4: GPT cleanup with per-app tone
-                final_text = clean_text(raw_text, bundle_id=self._recording_bundle_id)
+                # Step 3b: Text replacements (exact-match overrides cleanup)
+                replaced_text = apply_replacements(raw_text)
+                if replaced_text != raw_text:
+                    final_text = replaced_text
+                    log.info("Replacement applied")
+                else:
+                    # Step 4: GPT cleanup with per-app tone
+                    final_text = clean_text(raw_text, bundle_id=self._recording_bundle_id)
 
             if _was_cancelled():
                 return

@@ -79,6 +79,10 @@ def _build_system_prompt(tone: str, always_english: bool, user_style: str) -> st
         "- Split the text into sentences.\n"
         "- Insert paragraph breaks (blank lines) when the topic shifts.\n"
         "- Remove filler words (um, uh, like, you know, эм, ну, короче, типа, etc.).\n"
+        "- Resolve spoken self-corrections: when the speaker corrects themselves, "
+        "keep ONLY the corrected version. Example: 'let's meet Tuesday, actually "
+        "Wednesday' → 'let's meet Wednesday'; 'отправь Ивану, то есть Олегу' → "
+        "'отправь Олегу'.\n"
         "- Fix obvious grammar mistakes from speech-to-text errors.\n"
         "- Capitalize the first letter of each sentence.\n"
         "- Preserve the original meaning AND language (don't translate).\n"
@@ -95,18 +99,57 @@ def _build_system_prompt(tone: str, always_english: bool, user_style: str) -> st
         extras.append("Translate the text to English if it is in another language.")
     if user_style:
         extras.append(f"User style note: {user_style}")
+    # Personal dictionary — enforce exact spellings of user terms. This is
+    # the only dictionary hook on the streaming path (gpt-realtime-whisper
+    # doesn't accept prompts), so keep it even when transcription already
+    # used the vocab prompt.
+    try:
+        import dictionary
+        vocab_line = dictionary.cleanup_instruction()
+        if vocab_line:
+            extras.append(vocab_line)
+    except Exception:
+        pass
 
     if extras:
         return base + "\n\nAdditional instructions:\n" + "\n".join(f"- {e}" for e in extras)
     return base
 
 
+# Sensible out-of-the-box tone per app category (Wispr Flow's "context
+# awareness" starter). User-configured app_tones in settings ALWAYS win —
+# these only apply when the user hasn't customised the app.
+_DEFAULT_APP_TONES = {
+    # Messengers → casual
+    "com.tinyspeck.slackmacgap":      S.TONE_CASUAL,   # Slack
+    "ru.keepcoder.Telegram":          S.TONE_CASUAL,   # Telegram
+    "net.whatsapp.WhatsApp":          S.TONE_CASUAL,   # WhatsApp
+    "com.apple.MobileSMS":            S.TONE_CASUAL,   # Messages
+    "com.hnc.Discord":                S.TONE_CASUAL,   # Discord
+    # Mail → professional
+    "com.apple.mail":                 S.TONE_PROFESSIONAL,
+    "com.microsoft.Outlook":          S.TONE_PROFESSIONAL,
+    "com.readdle.smartemail-Mac":     S.TONE_PROFESSIONAL,  # Spark
+    # Code editors / terminals → raw (no LLM touching code or commands)
+    "com.microsoft.VSCode":           S.TONE_RAW,
+    "com.apple.Terminal":             S.TONE_RAW,
+    "com.googlecode.iterm2":          S.TONE_RAW,
+    "com.jetbrains.intellij":         S.TONE_RAW,
+    "com.jetbrains.pycharm":          S.TONE_RAW,
+    "com.todesktop.230313mzl4w4u92":  S.TONE_RAW,      # Cursor
+    "dev.zed.Zed":                    S.TONE_RAW,
+}
+
+
 def _resolve_tone(bundle_id: Optional[str] = None) -> str:
-    """Resolve effective tone: per-app override or base_tone from settings."""
+    """Resolve effective tone: user per-app override → built-in default
+    for known apps → base_tone from settings."""
     if bundle_id:
         app_tones = S.get("app_tones", {})
         if bundle_id in app_tones:
             return app_tones[bundle_id]
+        if bundle_id in _DEFAULT_APP_TONES:
+            return _DEFAULT_APP_TONES[bundle_id]
     return S.get("base_tone", S.TONE_NEUTRAL)
 
 

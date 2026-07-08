@@ -42,12 +42,17 @@ DEFAULTS: Dict[str, Any] = {
     # stays in the clipboard so the user can paste it manually.
     # Ownership-checked: if the user copied something new during the
     # 0.6s window, we don't overwrite their new copy.
-    # Send audio chunks via WebSocket to OpenAI Realtime API while recording.
-    # Faster UX (transcript ready ~0.3-0.6s after release vs 1.5-2s for batch)
-    # but ~2.5x more expensive. Opt-in; batch is the default and fallback.
-    "use_streaming": False,
+    # Send audio chunks via WebSocket to OpenAI Realtime GA API while
+    # recording (gpt-realtime-whisper streams the transcript DURING speech).
+    # Transcript is ready ~0.3-0.6s after release vs 1.5-2.5s for batch —
+    # this is the Wispr Flow architecture. ~2.5x price of batch (still
+    # ~$1/month at an hour of dictation). Batch remains the fallback.
+    "use_streaming": True,
     "restore_clipboard": True,
     "check_focus": True,               # check AX focus before paste
+    # Voice snippets: say the trigger phrase alone → the template is pasted.
+    # Example: {"моя подпись": "С уважением,\nМаксим"}
+    "snippets": {},
     "hotkey": "right_option",          # right_option | left_option | right_cmd |
                                        # caps_lock | right_shift | f13..f19
 }

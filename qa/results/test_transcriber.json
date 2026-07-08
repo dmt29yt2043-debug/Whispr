@@ -6,7 +6,7 @@
       "area": "transcriber",
       "desc": "short audio (\u22648s) with realistic chars/sec \u2192 returns gpt-4o-transcribe result, no fallback",
       "status": "PASS",
-      "ms": 43,
+      "ms": 46,
       "error": null
     },
     {
@@ -78,7 +78,7 @@
       "area": "transcriber",
       "desc": "_get_openai_client returns the SAME instance across calls (connection pool reuse)",
       "status": "PASS",
-      "ms": 9,
+      "ms": 10,
       "error": null
     },
     {
@@ -86,7 +86,7 @@
       "area": "transcriber",
       "desc": "48kHz WAV is re-encoded to 16kHz mono FLAC, much smaller, same duration",
       "status": "PASS",
-      "ms": 21,
+      "ms": 98,
       "error": null
     },
     {

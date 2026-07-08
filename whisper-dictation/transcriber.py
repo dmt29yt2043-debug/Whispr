@@ -264,10 +264,22 @@ def _call_openai_transcribe(client, audio_path: str, model_name: str) -> Optiona
     try:
         import time as _t
         t0 = _t.time()
+        # Personal dictionary: bias the decoder toward the user's names/
+        # brands/jargon. Empty string → omit the param entirely (passing
+        # prompt="" changes decoding on some models).
+        kwargs = {}
+        try:
+            import dictionary
+            vocab_prompt = dictionary.transcription_prompt()
+            if vocab_prompt:
+                kwargs["prompt"] = vocab_prompt
+        except Exception:
+            pass
         with open(audio_path, "rb") as f:
             response = client.audio.transcriptions.create(
                 model=model_name,
                 file=f,
+                **kwargs,
             )
         text = (response.text or "").strip()
         duration = _audio_duration_seconds(audio_path)

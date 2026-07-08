@@ -22,6 +22,10 @@ MODEL_LOCAL = "local-faster-whisper"
 TRANSCRIBE_PRICE_PER_SEC: Dict[str, float] = {
     MODEL_GPT4O_MINI_TRANSCRIBE: 0.003 / 60.0,   # $0.003/min
     MODEL_WHISPER_1:             0.006 / 60.0,   # $0.006/min
+    "gpt-4o-transcribe":         0.006 / 60.0,   # $0.006/min
+    # GA Realtime streaming transcription (audio input tokens).
+    # Conservative estimate — update when the invoice confirms the rate.
+    "gpt-realtime-whisper":      0.017 / 60.0,   # ~$0.017/min
     MODEL_LOCAL:                 0.0,            # free
 }
 

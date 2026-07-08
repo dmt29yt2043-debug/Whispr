@@ -36,7 +36,12 @@ except ImportError:
 log = logging.getLogger(__name__)
 
 _REALTIME_URL = "wss://api.openai.com/v1/realtime?intent=transcription"
-_TRANSCRIBE_MODEL = "gpt-4o-transcribe"
+# GA Realtime API model. gpt-realtime-whisper is natively streaming —
+# transcript deltas arrive WHILE audio is being appended, so by the time
+# the user releases the key most of the text is already here. This is the
+# same architecture Wispr Flow uses (ASR concurrent with speech) and the
+# reason their end-to-end latency is sub-second.
+_TRANSCRIBE_MODEL = "gpt-realtime-whisper"
 _CONNECT_TIMEOUT_SEC = 3.0
 
 # Process-wide kill switch for the Realtime API. We flip this to True
@@ -80,6 +85,13 @@ class StreamingTranscriber:
         self._ws: Optional[websocket.WebSocket] = None
         self._reader_thread: Optional[threading.Thread] = None
         self._final_text: Optional[str] = None
+        # Streaming deltas for the CURRENT (not yet completed) item.
+        # gpt-realtime-whisper emits transcript deltas while audio is
+        # still being appended; `completed` then carries the final text
+        # for the item and we fold it into _final_text. If `completed`
+        # never arrives (timeout), the accumulated deltas are still a
+        # usable transcript — better than dropping the tail.
+        self._partial_text: str = ""
         self._final_event = threading.Event()
         self._error: Optional[str] = None
         self._closed = False
@@ -146,38 +158,27 @@ class StreamingTranscriber:
 
     def _connect_and_configure(self, sample_rate: int) -> None:
         try:
+            # GA Realtime API: no OpenAI-Beta header. The old
+            # "OpenAI-Beta: realtime=v1" marked the retired beta shape and
+            # now yields `beta_api_shape_disabled` errors.
             ws = websocket.create_connection(
                 _REALTIME_URL,
                 header=[
                     f"Authorization: Bearer {os.environ['OPENAI_API_KEY']}",
-                    "OpenAI-Beta: realtime=v1",
                 ],
                 timeout=_CONNECT_TIMEOUT_SEC,
             )
             ws.settimeout(None)
 
-            # server_vad turn_detection is REQUIRED for multi-phrase audio.
-            # With turn_detection=null, the API processes only the first
-            # utterance up to a pause and ignores everything after commit —
-            # net effect: long recordings came back as 1-sentence transcripts.
-            # server_vad splits on detected silence → we get one `completed`
-            # event per phrase, and commit_and_wait accumulates them all.
-            config = {
-                "type": "transcription_session.update",
-                "session": {
-                    "input_audio_format": "pcm16",
-                    "input_audio_transcription": {
-                        "model": _TRANSCRIBE_MODEL,
-                        "prompt": "Russian and English speech. Русская и английская речь.",
-                    },
-                    "turn_detection": {
-                        "type": "server_vad",
-                        "threshold": 0.5,
-                        "prefix_padding_ms": 300,
-                        "silence_duration_ms": 500,
-                    },
-                },
-            }
+            # GA session shape: session.update with session.type=transcription.
+            # turn_detection is omitted (null) — with gpt-realtime-whisper we
+            # commit manually at key release. The model streams transcript
+            # DELTAS while audio is appended, so unlike the beta gpt-4o
+            # models there is no "only first utterance processed" trap:
+            # _handle_event accumulates deltas continuously, and `completed`
+            # after our commit finalizes the text.
+            # NOTE: `prompt` is not supported by gpt-realtime-whisper in GA.
+            config = self._build_session_config()
             # Session-config must also go through the send_lock
             with self._send_lock:
                 ws.send(json.dumps(config))
@@ -211,6 +212,31 @@ class StreamingTranscriber:
             log.warning("Realtime WS connect failed: %s — batch fallback will be used", e)
             self._ready.set()  # unblock any waiters even on failure
             self._closed = True
+
+    def _build_session_config(self) -> dict:
+        """GA Realtime session.update payload for a transcription session.
+
+        Kept as a separate method so tests can assert the exact shape
+        without opening a socket.
+        """
+        return {
+            "type": "session.update",
+            "session": {
+                "type": "transcription",
+                "audio": {
+                    "input": {
+                        "format": {
+                            "type": "audio/pcm",
+                            "rate": self._sample_rate,
+                        },
+                        "transcription": {
+                            "model": _TRANSCRIBE_MODEL,
+                        },
+                        # turn_detection deliberately absent → manual commit
+                    },
+                },
+            },
+        }
 
     # Back-compat alias (callers using old API)
     def start(self, sample_rate: int = 24000) -> bool:
@@ -292,7 +318,7 @@ class StreamingTranscriber:
         on timeout — a partial result is better than nothing.
         """
         if self._closed:
-            return self._final_text  # may be None if nothing received
+            return self._result_text()  # may be None if nothing received
 
         with self._lock:
             ws = self._ws
@@ -308,24 +334,24 @@ class StreamingTranscriber:
 
         if ws is None:
             # Connection never opened — return whatever we have
-            return self._final_text
+            return self._result_text()
 
         if not sent_pending:
             # CRITICAL: clear _final_event BEFORE commit, otherwise
-            # _final_event is already set from prior server_vad segments
-            # received during recording, and the wait() below returns
-            # instantly — we'd miss the final segment triggered by our
-            # manual commit.
+            # _final_event is already set from prior segments received
+            # during recording, and the wait() below returns instantly —
+            # we'd miss the final segment triggered by our manual commit.
             self._final_event.clear()
             self._flush_remainder_and_commit(ws)
             if self._closed:
-                return self._final_text
+                return self._result_text()
 
         # Wait for the post-commit transcript event
         if not self._final_event.wait(timeout=timeout):
+            result = self._result_text()
             log.info("No post-commit transcript within %.1fs — returning accumulated text (%d chars)",
-                     timeout, len(self._final_text or ""))
-            return self._final_text
+                     timeout, len(result or ""))
+            return result
 
         # Poll for additional segments (server can emit several)
         while True:
@@ -335,7 +361,20 @@ class StreamingTranscriber:
                 break
             log.info("Additional transcript segment received, continuing to wait")
 
-        return self._final_text
+        return self._result_text()
+
+    def _result_text(self) -> Optional[str]:
+        """Finalized text plus any un-finalized delta tail.
+
+        If the server never sent `completed` for the last item (timeout,
+        connection drop), the accumulated deltas are still a usable
+        transcript — losing the tail is strictly worse.
+        """
+        with self._lock:
+            final = (self._final_text or "").strip()
+            tail = self._partial_text.strip()
+        combined = (final + " " + tail).strip() if tail else final
+        return combined or None
 
     def close(self) -> None:
         self._safe_close()
@@ -362,16 +401,26 @@ class StreamingTranscriber:
 
     def _handle_event(self, evt: dict) -> None:
         etype = evt.get("type", "")
-        # DEBUG: log every event type so we can diagnose segment splits
+        # Deltas arrive many times per second — keep those at DEBUG,
+        # log everything else at INFO for diagnostics.
+        if etype == "conversation.item.input_audio_transcription.delta":
+            log.debug("WS event: %s", etype)
+            delta = evt.get("delta") or ""
+            if delta:
+                with self._lock:
+                    self._partial_text += delta
+            return
         log.info("WS event: %s", etype)
 
         # Final transcript events — ACCUMULATE instead of overwriting,
-        # because the server may split long audio into multiple segments
-        # and emit a `.completed` per segment (even with turn_detection=None).
+        # because the server may emit one `completed` per segment/item.
+        # `completed` supersedes the deltas we collected for that item,
+        # so the partial buffer is reset here.
         if etype == "conversation.item.input_audio_transcription.completed":
             text = (evt.get("transcript") or "").strip()
             log.info("WS transcript segment: %r", text[:120])
             with self._lock:
+                self._partial_text = ""
                 if self._final_text:
                     self._final_text = (self._final_text + " " + text).strip()
                 else:
