@@ -111,6 +111,12 @@ class StreamingTranscriber:
         # Cap while connecting (50s of audio @ 24kHz PCM16 → ~2.4MB)
         self._max_buffer_bytes = 50 * 24000 * 2
         self._pending_commit = False
+        # True once the commit was sent (or queued for the connect thread).
+        # Lets commit_async() fire early — at stream-stop time, before the
+        # WAV is even written — while commit_and_wait() stays a no-op
+        # double-commit-wise. A second commit on an empty buffer would
+        # error ("buffer too small").
+        self._committed = False
         self._ready = threading.Event()
         # Diagnostics: count bytes actually sent to WS so we can compare
         # against the total audio length in logs.
@@ -320,48 +326,55 @@ class StreamingTranscriber:
         if self._closed:
             return self._result_text()  # may be None if nothing received
 
-        with self._lock:
-            ws = self._ws
-            if ws is None:
-                self._pending_commit = True
+        # Ensure the commit is out (no-op if commit_async already fired
+        # at stream-stop time — the usual fast path).
+        self.commit_async()
 
-        # Wait for WS to become ready (bounded)
+        # Wait for WS to become ready (bounded) in case we're still
+        # connecting; the connect thread sends the pending commit itself.
         self._ready.wait(timeout=min(timeout, 2.0))
-
         with self._lock:
             ws = self._ws
-            sent_pending = self._pending_commit and ws is not None
-
         if ws is None:
             # Connection never opened — return whatever we have
             return self._result_text()
 
-        if not sent_pending:
-            # CRITICAL: clear _final_event BEFORE commit, otherwise
-            # _final_event is already set from prior segments received
-            # during recording, and the wait() below returns instantly —
-            # we'd miss the final segment triggered by our manual commit.
-            self._final_event.clear()
-            self._flush_remainder_and_commit(ws)
-            if self._closed:
-                return self._result_text()
-
-        # Wait for the post-commit transcript event
+        # Wait for the post-commit transcript. With manual commit (no
+        # server VAD) the server creates exactly ONE item per commit and
+        # emits exactly one `completed` — so we can return the moment it
+        # lands. (The old server_vad flow polled 0.7s for extra segments
+        # after every completed, adding a flat 0.7s to every dictation.)
         if not self._final_event.wait(timeout=timeout):
             result = self._result_text()
             log.info("No post-commit transcript within %.1fs — returning accumulated text (%d chars)",
                      timeout, len(result or ""))
             return result
 
-        # Poll for additional segments (server can emit several)
-        while True:
-            with self._lock:
-                self._final_event.clear()
-            if not self._final_event.wait(timeout=0.7):
-                break
-            log.info("Additional transcript segment received, continuing to wait")
-
         return self._result_text()
+
+    def commit_async(self) -> None:
+        """Flush the tail audio and send the commit. Idempotent.
+
+        Called from the recorder the instant the CoreAudio stream stops —
+        i.e. BEFORE the WAV file is concatenated/written. That puts the
+        server to work on the final audio chunk in parallel with our local
+        file I/O instead of after it (~100-200ms shaved off every
+        dictation). commit_and_wait() then only has to wait.
+        """
+        with self._lock:
+            if self._committed or self._closed:
+                return
+            self._committed = True
+            ws = self._ws
+            if ws is None:
+                # Still connecting — the connect thread will flush+commit
+                # when the socket is ready.
+                self._pending_commit = True
+                return
+        # Clear before sending so a stale event from an earlier segment
+        # can't make commit_and_wait return before the real final text.
+        self._final_event.clear()
+        self._flush_remainder_and_commit(ws)
 
     def _result_text(self) -> Optional[str]:
         """Finalized text plus any un-finalized delta tail.

@@ -545,12 +545,16 @@ class WhisperDictationApp(rumps.App):
         # 200-500ms TCP/TLS handshake doesn't delay the sound + overlay.
         # Chunks are buffered in the streamer until the socket is ready.
         self._streamer = None
+        self.recorder.set_stream_stopped_callback(None)
         if S.get("use_streaming", False) and S.get("mode", S.MODE_AUTO) != S.MODE_LOCAL:
             try:
                 st = StreamingTranscriber()
                 if st.start_async(sample_rate=24000):
                     self._streamer = st
                     self.recorder.set_chunk_callback(st.feed)
+                    # Commit the instant the input stream closes — the
+                    # server transcribes the tail while we write the WAV.
+                    self.recorder.set_stream_stopped_callback(st.commit_async)
                     log.info("Streaming transcription enabled (connecting in background)")
             except Exception as e:
                 log.warning("Streaming init failed, will use batch: %s", e)

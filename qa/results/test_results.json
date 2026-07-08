@@ -274,7 +274,7 @@
         "area": "cleaner",
         "desc": "speech with fillers triggers GPT call",
         "status": "PASS",
-        "ms": 24,
+        "ms": 9,
         "error": null
       },
       {
@@ -282,7 +282,7 @@
         "area": "cleaner",
         "desc": "GPT returns None content \u2192 falls back to raw",
         "status": "PASS",
-        "ms": 1,
+        "ms": 0,
         "error": null
       },
       {
@@ -290,7 +290,7 @@
         "area": "cleaner",
         "desc": "network error \u2192 raw text returned",
         "status": "PASS",
-        "ms": 1,
+        "ms": 0,
         "error": null
       },
       {
@@ -356,7 +356,7 @@
         "area": "dictionary",
         "desc": "no file \u2192 no terms, empty prompts",
         "status": "PASS",
-        "ms": 1,
+        "ms": 0,
         "error": null
       },
       {
@@ -454,7 +454,7 @@
         "area": "hotkey",
         "desc": "single short tap \u2192 start + stop after double-tap timeout",
         "status": "PASS",
-        "ms": 462,
+        "ms": 466,
         "error": null
       },
       {
@@ -462,7 +462,7 @@
         "area": "hotkey",
         "desc": "double-tap: two short taps \u2192 toggle mode, recording stays on",
         "status": "PASS",
-        "ms": 653,
+        "ms": 652,
         "error": null
       },
       {
@@ -470,7 +470,7 @@
         "area": "hotkey",
         "desc": "in toggle mode, next press stops recording",
         "status": "PASS",
-        "ms": 555,
+        "ms": 553,
         "error": null
       },
       {
@@ -478,7 +478,7 @@
         "area": "hotkey",
         "desc": "reset_state() cancels pending double-tap timer",
         "status": "PASS",
-        "ms": 650,
+        "ms": 654,
         "error": null
       },
       {
@@ -512,7 +512,7 @@
         "area": "injector",
         "desc": "empty text returns 'skipped', doesn't touch clipboard",
         "status": "PASS",
-        "ms": 65,
+        "ms": 58,
         "error": null
       },
       {
@@ -520,7 +520,7 @@
         "area": "injector",
         "desc": "whitespace-only text returns 'skipped'",
         "status": "PASS",
-        "ms": 189,
+        "ms": 127,
         "error": null
       },
       {
@@ -528,7 +528,7 @@
         "area": "injector",
         "desc": "no text focus \u2192 returns 'copied', clipboard set, no paste",
         "status": "PASS",
-        "ms": 58,
+        "ms": 56,
         "error": null
       },
       {
@@ -536,7 +536,7 @@
         "area": "injector",
         "desc": "text focus \u2192 returns 'pasted', fires Cmd+V",
         "status": "PASS",
-        "ms": 52,
+        "ms": 56,
         "error": null
       },
       {
@@ -544,7 +544,7 @@
         "area": "injector",
         "desc": "clipboard verification: waits for clipboard to settle before paste",
         "status": "PASS",
-        "ms": 1,
+        "ms": 0,
         "error": null
       },
       {
@@ -552,7 +552,7 @@
         "area": "injector",
         "desc": "clipboard restore: skipped when user changes clipboard during wait",
         "status": "PASS",
-        "ms": 969,
+        "ms": 968,
         "error": null
       },
       {
@@ -560,7 +560,7 @@
         "area": "injector",
         "desc": "clipboard restore: restores when clipboard still ours",
         "status": "PASS",
-        "ms": 963,
+        "ms": 966,
         "error": null
       },
       {
@@ -568,7 +568,7 @@
         "area": "injector",
         "desc": "10 KB text handled without truncation",
         "status": "PASS",
-        "ms": 1,
+        "ms": 3,
         "error": null
       },
       {
@@ -576,7 +576,7 @@
         "area": "injector",
         "desc": "set_last_transcription + repaste_last round-trip",
         "status": "PASS",
-        "ms": 1,
+        "ms": 2,
         "error": null
       },
       {
@@ -592,7 +592,7 @@
         "area": "injector",
         "desc": "after re-paste, original clipboard content is restored \u2014 user's copied data is preserved",
         "status": "PASS",
-        "ms": 654,
+        "ms": 648,
         "error": null
       },
       {
@@ -600,7 +600,7 @@
         "area": "injector",
         "desc": "if user copies something new during re-paste, we do NOT clobber it on restore",
         "status": "PASS",
-        "ms": 1012,
+        "ms": 1014,
         "error": null
       }
     ],
@@ -644,7 +644,7 @@
         "area": "performance",
         "desc": "10 threads \u00d7 100 stats writes \u2014 latency p95 <50ms",
         "status": "PASS",
-        "ms": 786,
+        "ms": 400,
         "error": null
       },
       {
@@ -652,7 +652,7 @@
         "area": "performance",
         "desc": "20 threads \u00d7 50 settings writes \u2014 no lost writes, fast",
         "status": "PASS",
-        "ms": 1169,
+        "ms": 582,
         "error": null
       },
       {
@@ -660,7 +660,7 @@
         "area": "performance",
         "desc": "anti-hallucination filter on 10,000 inputs < 1s",
         "status": "PASS",
-        "ms": 59,
+        "ms": 30,
         "error": null
       }
     ],
@@ -736,7 +736,7 @@
         "area": "security",
         "desc": "SQL injection attempt via model name is parameterized safely",
         "status": "PASS",
-        "ms": 6,
+        "ms": 3,
         "error": null
       },
       {
@@ -744,7 +744,7 @@
         "area": "security",
         "desc": "afplay fallback uses subprocess, no shell interpolation",
         "status": "PASS",
-        "ms": 3,
+        "ms": 1,
         "error": null
       },
       {
@@ -802,7 +802,7 @@
         "area": "settings",
         "desc": "corrupted JSON \u2192 defaults, no crash",
         "status": "PASS",
-        "ms": 1,
+        "ms": 0,
         "error": null
       },
       {
@@ -826,7 +826,7 @@
         "area": "settings",
         "desc": "50 concurrent set() from 20 threads \u2014 no lost writes",
         "status": "PASS",
-        "ms": 21,
+        "ms": 12,
         "error": null
       },
       {
@@ -834,7 +834,7 @@
         "area": "settings",
         "desc": "settings file never in 0-byte state under concurrent writes",
         "status": "PASS",
-        "ms": 507,
+        "ms": 506,
         "error": null
       }
     ],
@@ -844,7 +844,7 @@
         "area": "stats",
         "desc": "record_transcribe increments by_model correctly",
         "status": "PASS",
-        "ms": 6,
+        "ms": 3,
         "error": null
       },
       {
@@ -852,7 +852,7 @@
         "area": "stats",
         "desc": "paid_seconds excludes local, local_seconds separated",
         "status": "PASS",
-        "ms": 3,
+        "ms": 1,
         "error": null
       },
       {
@@ -860,7 +860,7 @@
         "area": "stats",
         "desc": "GPT token cost computed correctly",
         "status": "PASS",
-        "ms": 2,
+        "ms": 1,
         "error": null
       },
       {
@@ -868,7 +868,7 @@
         "area": "stats",
         "desc": "10 threads \u00d7 100 increments \u2014 no lost writes",
         "status": "PASS",
-        "ms": 831,
+        "ms": 408,
         "error": null
       },
       {
@@ -876,7 +876,7 @@
         "area": "stats",
         "desc": "SQL-injection-like model name handled via parameterized query",
         "status": "PASS",
-        "ms": 3,
+        "ms": 1,
         "error": null
       },
       {
@@ -884,7 +884,7 @@
         "area": "stats",
         "desc": "word count increments across dictations",
         "status": "PASS",
-        "ms": 3,
+        "ms": 1,
         "error": null
       },
       {
@@ -892,7 +892,7 @@
         "area": "stats",
         "desc": "empty text/zero seconds doesn't add rows",
         "status": "PASS",
-        "ms": 1,
+        "ms": 0,
         "error": null
       }
     ],
@@ -944,6 +944,30 @@
         "status": "PASS",
         "ms": 0,
         "error": null
+      },
+      {
+        "id": "TC_STREAM_COMMIT_IDEMPOTENT",
+        "area": "streaming",
+        "desc": "commit_async twice + commit_and_wait sends exactly ONE commit message",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
+      },
+      {
+        "id": "TC_STREAM_NO_POST_COMPLETED_POLL",
+        "area": "streaming",
+        "desc": "commit_and_wait returns immediately after completed (no 0.7s poll tax)",
+        "status": "PASS",
+        "ms": 105,
+        "error": null
+      },
+      {
+        "id": "TC_STREAM_COMMIT_BEFORE_CONNECT_QUEUES",
+        "area": "streaming",
+        "desc": "commit_async while still connecting queues a pending commit (no crash, no double)",
+        "status": "PASS",
+        "ms": 0,
+        "error": null
       }
     ],
     "test_transcriber": [
@@ -952,7 +976,7 @@
         "area": "transcriber",
         "desc": "short audio (\u22648s) with realistic chars/sec \u2192 returns gpt-4o-transcribe result, no fallback",
         "status": "PASS",
-        "ms": 46,
+        "ms": 23,
         "error": null
       },
       {
@@ -1024,7 +1048,7 @@
         "area": "transcriber",
         "desc": "_get_openai_client returns the SAME instance across calls (connection pool reuse)",
         "status": "PASS",
-        "ms": 10,
+        "ms": 4,
         "error": null
       },
       {
@@ -1032,7 +1056,7 @@
         "area": "transcriber",
         "desc": "48kHz WAV is re-encoded to 16kHz mono FLAC, much smaller, same duration",
         "status": "PASS",
-        "ms": 98,
+        "ms": 18,
         "error": null
       },
       {
@@ -1050,7 +1074,7 @@
         "area": "vad",
         "desc": "pure silence \u2192 None (no speech)",
         "status": "PASS",
-        "ms": 4,
+        "ms": 1,
         "error": null
       },
       {
@@ -1058,7 +1082,7 @@
         "area": "vad",
         "desc": "tone + silence \u2192 returns trimmed WAV",
         "status": "PASS",
-        "ms": 7,
+        "ms": 1,
         "error": null
       },
       {
@@ -1066,7 +1090,7 @@
         "area": "vad",
         "desc": "<0.3s audio bypasses VAD, returns original",
         "status": "PASS",
-        "ms": 30,
+        "ms": 9,
         "error": null
       },
       {
@@ -1074,7 +1098,7 @@
         "area": "vad",
         "desc": "VAD failure on silent audio \u2192 None (pipeline will use raw)",
         "status": "PASS",
-        "ms": 1,
+        "ms": 0,
         "error": null
       },
       {
@@ -1098,7 +1122,7 @@
         "area": "recorder",
         "desc": "start/stop serialized via _op_lock; rapid calls do not race",
         "status": "PASS",
-        "ms": 567,
+        "ms": 503,
         "error": null
       },
       {
@@ -1106,7 +1130,7 @@
         "area": "recorder",
         "desc": "recording <0.4s \u2192 returns None, no orphan WAV",
         "status": "PASS",
-        "ms": 247,
+        "ms": 237,
         "error": null
       },
       {
@@ -1122,7 +1146,7 @@
         "area": "recorder",
         "desc": "wake \u2192 reinit happens (either in async warm-up OR at start()); dirty flag is cleared by end of start()",
         "status": "PASS",
-        "ms": 473,
+        "ms": 444,
         "error": null
       },
       {
@@ -1130,7 +1154,7 @@
         "area": "recorder",
         "desc": "start() without dirty flag does NOT call PortAudio reinit (cheap path)",
         "status": "PASS",
-        "ms": 259,
+        "ms": 241,
         "error": null
       },
       {
@@ -1146,7 +1170,7 @@
         "area": "recorder",
         "desc": "InputStream open fails on every attempt \u2192 returns None, no infinite loop",
         "status": "PASS",
-        "ms": 204,
+        "ms": 202,
         "error": null
       },
       {
@@ -1160,9 +1184,9 @@
     ]
   },
   "summary": {
-    "pass": 141,
+    "pass": 144,
     "fail": 0,
     "error": 0,
-    "total": 141
+    "total": 144
   }
 }

@@ -64,6 +64,8 @@ class Recorder:
         # Optional raw-chunk callback for streaming transcription
         # (fired with PCM16 bytes on every audio callback).
         self._chunk_callback = None
+        # Fired once per stop(), right after the input stream closes.
+        self._stream_stopped_callback = None
         # Subsystem-dirty flag. Set when (a) macOS wakes from sleep, or
         # (b) a previous recording came back fully silent (peak=rms=0.0).
         # Both indicate PortAudio is holding a stale CoreAudio handle —
@@ -162,6 +164,18 @@ class Recorder:
         must be fast and non-blocking — it runs on the CoreAudio thread.
         """
         self._chunk_callback = cb
+
+    def set_stream_stopped_callback(self, cb):
+        """Register a callback fired the moment the input stream is closed.
+
+        Fires inside stop() right after the CoreAudio stream is stopped —
+        i.e. once no more audio chunks can arrive — but BEFORE the frames
+        are concatenated and the WAV is written. streaming_transcriber
+        hooks its commit here so the server starts transcribing the tail
+        in parallel with our local file I/O. Runs on a daemon thread so a
+        slow network send can't delay the WAV path.
+        """
+        self._stream_stopped_callback = cb
 
     def start(self) -> None:
         """Start recording audio from the preferred microphone.
@@ -286,6 +300,18 @@ class Recorder:
                 stream.close()
             except Exception as log_err:
                 log.warning("Stream stop error: %s", log_err)
+
+        # Stream is closed → no more chunks can arrive. Let the streaming
+        # transcriber commit NOW, in parallel with the concat/WAV work
+        # below, instead of after it.
+        cb = getattr(self, "_stream_stopped_callback", None)
+        if cb is not None:
+            def _fire():
+                try:
+                    cb()
+                except Exception as e:
+                    log.debug("stream_stopped callback error: %s", e)
+            threading.Thread(target=_fire, daemon=True).start()
 
         if not frames:
             return None

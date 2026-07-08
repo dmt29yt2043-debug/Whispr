@@ -48,6 +48,30 @@
       "status": "PASS",
       "ms": 0,
       "error": null
+    },
+    {
+      "id": "TC_STREAM_COMMIT_IDEMPOTENT",
+      "area": "streaming",
+      "desc": "commit_async twice + commit_and_wait sends exactly ONE commit message",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_STREAM_NO_POST_COMPLETED_POLL",
+      "area": "streaming",
+      "desc": "commit_and_wait returns immediately after completed (no 0.7s poll tax)",
+      "status": "PASS",
+      "ms": 105,
+      "error": null
+    },
+    {
+      "id": "TC_STREAM_COMMIT_BEFORE_CONNECT_QUEUES",
+      "area": "streaming",
+      "desc": "commit_async while still connecting queues a pending commit (no crash, no double)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
     }
   ]
 }

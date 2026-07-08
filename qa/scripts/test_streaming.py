@@ -120,5 +120,85 @@ def test_beta_error_kill_switch():
         st_mod._REALTIME_DISABLED_REASON = prev_reason
 
 
+class _FakeWS:
+    """Collects JSON messages sent over the fake socket."""
+    def __init__(self):
+        self.sent = []
+
+    def send(self, data):
+        import json as _json
+        self.sent.append(_json.loads(data))
+
+
+def _commit_count(fake_ws):
+    return sum(1 for m in fake_ws.sent if m.get("type") == "input_audio_buffer.commit")
+
+
+@case("TC_STREAM_COMMIT_IDEMPOTENT", "streaming",
+      "commit_async twice + commit_and_wait sends exactly ONE commit message")
+def test_commit_idempotent():
+    st = StreamingTranscriber()
+    ws = _FakeWS()
+    st._ws = ws
+    st._ready.set()
+
+    st.commit_async()
+    st.commit_async()  # e.g. recorder callback + safety call
+    # Simulate the server's final transcript so commit_and_wait returns
+    st._handle_event({
+        "type": "conversation.item.input_audio_transcription.completed",
+        "transcript": "готово",
+    })
+    out = st.commit_and_wait(timeout=1.0)
+    assert out == "готово"
+    assert _commit_count(ws) == 1, (
+        f"expected exactly 1 commit, got {_commit_count(ws)}: {ws.sent}"
+    )
+
+
+@case("TC_STREAM_NO_POST_COMPLETED_POLL", "streaming",
+      "commit_and_wait returns immediately after completed (no 0.7s poll tax)")
+def test_no_poll_tax():
+    import time
+    import threading
+
+    st = StreamingTranscriber()
+    ws = _FakeWS()
+    st._ws = ws
+    st._ready.set()
+
+    st.commit_async()
+
+    # Deliver `completed` 100ms after the wait starts
+    def _deliver():
+        time.sleep(0.1)
+        st._handle_event({
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "быстрый ответ",
+        })
+    threading.Thread(target=_deliver, daemon=True).start()
+
+    t0 = time.time()
+    out = st.commit_and_wait(timeout=3.0)
+    elapsed = time.time() - t0
+    assert out == "быстрый ответ"
+    assert elapsed < 0.5, (
+        f"commit_and_wait took {elapsed:.2f}s — the 0.7s segment poll is back?"
+    )
+
+
+@case("TC_STREAM_COMMIT_BEFORE_CONNECT_QUEUES", "streaming",
+      "commit_async while still connecting queues a pending commit (no crash, no double)")
+def test_commit_before_connect():
+    st = StreamingTranscriber()
+    assert st._ws is None
+    st.commit_async()
+    assert st._pending_commit is True, "commit must be queued for the connect thread"
+    assert st._committed is True
+    # A second call must not do anything new
+    st.commit_async()
+    assert st._pending_commit is True
+
+
 if __name__ == "__main__":
     run_all("test_streaming")
