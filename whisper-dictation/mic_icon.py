@@ -218,13 +218,12 @@ def _save_png(img: "NSImage", path: str) -> bool:  # type: ignore
 
 
 def ensure_menu_bar_icon() -> Optional[str]:
-    """Generate (if missing) and return path to the menu-bar PNG.
+    """Generate (if missing) and return path to the menu-bar TEMPLATE PNG.
 
-    Coloured (dark navy) rather than template-black: on macOS Tahoe (26),
-    template PNGs with anti-aliased edges sometimes don't render in the
-    menu bar at all. A coloured icon shows up reliably in both light and
-    dark mode. The colour we use is the same dark navy as the overlay,
-    so the menu-bar and overlay glyphs look like the same product.
+    Pure black on transparency, used with template=True: macOS tints it
+    black in a light menu bar and WHITE in a dark one. The earlier
+    "coloured navy" experiment was unreadable on dark menu bars (navy on
+    near-black) — which users reported as "the icon is not there".
     """
     os.makedirs(_ICON_DIR, exist_ok=True)
     path = os.path.join(_ICON_DIR, "menu_bar_mic.png")
@@ -232,8 +231,7 @@ def ensure_menu_bar_icon() -> Optional[str]:
     # Always regenerate — it's cheap (< 5 ms) and ensures the file matches
     # the current overlay geometry if either file changes.
     try:
-        # Same dark navy as overlay's _draw_mic: NSColor(0.13, 0.19, 0.48, 1.0)
-        img = _draw_mic_into_context(_MENU_BAR_PT, color_tuple=(0.13, 0.19, 0.48, 1.0))
+        img = _draw_mic_into_context(_MENU_BAR_PT, color_tuple=(0.0, 0.0, 0.0, 1.0))
         if _save_png(img, path):
             log.info("Menu-bar icon written: %s", path)
             return path

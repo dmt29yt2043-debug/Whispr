@@ -1,0 +1,53 @@
+{
+  "script": "test_history",
+  "results": [
+    {
+      "id": "TC_HIST_ADD_AND_RECENT",
+      "area": "history",
+      "desc": "added dictations come back newest-first with timestamps",
+      "status": "PASS",
+      "ms": 2,
+      "error": null
+    },
+    {
+      "id": "TC_HIST_EMPTY_IGNORED",
+      "area": "history",
+      "desc": "empty/whitespace text is not stored",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_HIST_CAP",
+      "area": "history",
+      "desc": "history is capped \u2014 oldest entries pruned",
+      "status": "PASS",
+      "ms": 8,
+      "error": null
+    },
+    {
+      "id": "TC_HIST_CLEAR",
+      "area": "history",
+      "desc": "clear() wipes everything",
+      "status": "PASS",
+      "ms": 1,
+      "error": null
+    },
+    {
+      "id": "TC_HIST_PERSISTS_ACROSS_CONNECTIONS",
+      "area": "history",
+      "desc": "entries survive reopening the DB (app restart scenario)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_HIST_MENU_TITLE",
+      "area": "history",
+      "desc": "menu_title collapses newlines and ellipsizes long text",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    }
+  ]
+}

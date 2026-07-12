@@ -22,7 +22,7 @@
       "area": "cleaner",
       "desc": "speech with fillers triggers GPT call",
       "status": "PASS",
-      "ms": 12,
+      "ms": 9,
       "error": null
     },
     {

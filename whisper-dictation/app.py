@@ -41,21 +41,6 @@ def _set_app_identity():
         pass
 
 
-def _hide_from_dock_later():
-    """Switch to accessory mode AFTER rumps has created the status item.
-
-    NSStatusItem must be added while the app is in Regular mode; after that
-    we can flip to accessory to remove the Dock icon.
-    """
-    import time as _t
-    from AppKit import NSApplication
-    from PyObjCTools import AppHelper
-    _t.sleep(1.2)  # let rumps register its status item
-    AppHelper.callAfter(
-        lambda: NSApplication.sharedApplication().setActivationPolicy_(1)
-    )
-
-
 def _hide_child_from_dock():
     """For multiprocessing children — hide from Dock but don't load the icon."""
     try:
@@ -182,16 +167,14 @@ class WhisperDictationApp(rumps.App):
             log.warning("Custom mic icon generation failed: %s — falling back to emoji", e)
 
         if _MENU_BAR_ICON_IDLE:
-            # Pass icon as a coloured PNG (not template). On macOS Tahoe,
-            # template-mode PNGs with antialiased edges sometimes render
-            # as a blank space in the menu bar; a coloured icon shows up
-            # reliably. We use the same dark navy as the overlay glyph,
-            # so the menu-bar and overlay look like the same product.
+            # Template icon: black+alpha PNG, macOS auto-tints it to match
+            # the menu bar (black on light, white on dark). A coloured
+            # (navy) icon was tried before and was invisible on dark bars.
             super().__init__(
                 name="Whisper Dictation",
                 title=None,
                 icon=_MENU_BAR_ICON_IDLE,
-                template=False,
+                template=True,
                 quit_button=None,
             )
         else:
@@ -201,7 +184,7 @@ class WhisperDictationApp(rumps.App):
         # by _reassert_menu_icon() to restore the glyph after display
         # reconfigurations. Matches what super().__init__ just applied.
         self._bar_state = (
-            (_MENU_BAR_ICON_IDLE or None, False, None)
+            (_MENU_BAR_ICON_IDLE or None, True, None)
             if _MENU_BAR_ICON_IDLE else (None, None, ICON_IDLE)
         )
 
@@ -236,15 +219,17 @@ class WhisperDictationApp(rumps.App):
 
         # Menu items
         self.record_item = rumps.MenuItem("🔴 Start Recording", callback=self._toggle_recording)
+        self.history_item = rumps.MenuItem("🕘 Recent Dictations")
         self.stats_item = rumps.MenuItem("📊 Statistics", callback=self._show_stats)
         self.replacements_item = rumps.MenuItem("🔄 Text Replacements", callback=self._show_replacements)
         self.dictionary_item = rumps.MenuItem("📖 Add Word to Dictionary…", callback=self._add_dictionary_word)
         self.settings_item = rumps.MenuItem("⚙️ Settings", callback=self._show_settings)
-        self.quit_item = rumps.MenuItem("Quit", callback=self._quit)
+        self.quit_item = rumps.MenuItem("Quit Whisper Dictation", callback=self._quit)
 
         self.menu = [
             self.record_item,
             rumps.separator,
+            self.history_item,
             self.stats_item,
             self.replacements_item,
             self.dictionary_item,
@@ -252,6 +237,9 @@ class WhisperDictationApp(rumps.App):
             rumps.separator,
             self.quit_item,
         ]
+        # Populate the history submenu with what's already on disk so
+        # past dictations survive app restarts.
+        self._refresh_history_menu()
 
         # Warmup local model in background if needed
         if S.get("mode") in (S.MODE_LOCAL, S.MODE_AUTO):
@@ -337,6 +325,65 @@ class WhisperDictationApp(rumps.App):
             self._on_record_stop()
         else:
             self._on_record_start()
+
+    def _refresh_history_menu(self) -> None:
+        """Rebuild the Recent Dictations submenu (last 10 + Clear).
+
+        Clicking an entry copies the FULL text back to the clipboard — the
+        recovery path for "pasted into the wrong window": open the menu,
+        click the dictation, Cmd+V where it should have gone. Safe to call
+        from any thread; menu mutation is marshalled to the main thread.
+        """
+        import history
+
+        entries = history.get_recent(limit=10)
+
+        def _do():
+            try:
+                try:
+                    self.history_item.clear()
+                except AttributeError:
+                    # First call: the MenuItem has no NSMenu yet — .add()
+                    # below will create it.
+                    pass
+                if not entries:
+                    empty = rumps.MenuItem("(no dictations yet)")
+                    empty.set_callback(None)
+                    self.history_item.add(empty)
+                else:
+                    for _id, ts, text in entries:
+                        title = history.menu_title(text)
+                        item = rumps.MenuItem(
+                            title, callback=self._copy_history_entry)
+                        # Stash the full text on the item — callback reads it.
+                        item._full_text = text
+                        self.history_item.add(item)
+                self.history_item.add(rumps.separator)
+                self.history_item.add(
+                    rumps.MenuItem("Clear History", callback=self._clear_history))
+            except Exception as e:
+                log.warning("History menu refresh failed: %s", e)
+
+        from PyObjCTools import AppHelper
+        AppHelper.callAfter(_do)
+
+    def _copy_history_entry(self, sender) -> None:
+        text = getattr(sender, "_full_text", "") or sender.title
+        try:
+            import pyperclip
+            pyperclip.copy(text)
+            # Also make it the re-paste target so Cmd+Shift+V works too.
+            _injector.set_last_transcription(text)
+            preview = text[:80] + "…" if len(text) > 80 else text
+            self._notify("Copied to clipboard", preview)
+        except Exception as e:
+            log.warning("History copy failed: %s", e)
+
+    def _clear_history(self, _sender=None) -> None:
+        import history
+        history.clear()
+        self._refresh_history_menu()
+        self._notify("History", "Dictation history cleared")
 
     def _add_dictionary_word(self, _sender=None) -> None:
         """Menu: add a term to the personal dictionary.
@@ -429,15 +476,15 @@ class WhisperDictationApp(rumps.App):
             target_icon, target_template = _MENU_BAR_ICON_REC, False
             target_title = None  # icon alone, no "● REC" text — keeps the bar tidy
         elif title == ICON_IDLE and _MENU_BAR_ICON_IDLE:
-            # template=False — coloured icon, see __init__ for rationale
-            target_icon, target_template = _MENU_BAR_ICON_IDLE, False
+            # template=True — auto-tinted for light/dark menu bar
+            target_icon, target_template = _MENU_BAR_ICON_IDLE, True
             target_title = None
         elif title == ICON_PROCESSING and _MENU_BAR_ICON_IDLE:
             # Keep the mic glyph and show the hourglass NEXT to it.
             # Never set icon=None here: a status item whose icon
             # assignment later fails while title is also empty renders
             # ZERO-width — i.e. the icon "vanishes" from the menu bar.
-            target_icon, target_template = _MENU_BAR_ICON_IDLE, False
+            target_icon, target_template = _MENU_BAR_ICON_IDLE, True
             target_title = title
         else:
             # No custom icons available — fall back to text/emoji only
@@ -747,6 +794,14 @@ class WhisperDictationApp(rumps.App):
             # Step 5: Record stats + remember text for re-paste hotkey
             record_words(final_text)
             _injector.set_last_transcription(final_text)
+            # History: every dictation is recoverable from the menu even
+            # if the paste lands in the wrong window.
+            try:
+                import history
+                history.add(final_text, app_bundle=self._recording_bundle_id)
+                self._refresh_history_menu()
+            except Exception as e:
+                log.debug("history record failed: %s", e)
 
             # Step 6: Inject with focus check + clipboard restore
             result = inject_text(
@@ -1139,13 +1194,18 @@ def main():
     # Install re-paste hotkey (Cmd+Shift+V)
     app.repaste_hotkey.start()
 
-    # Hide the Python/Dock icon. macOS requires the status item to be
-    # registered while the app is in "Regular" activation policy; once
-    # rumps has done that we flip to "Accessory" (== LSUIElement), which
-    # removes the Dock icon but keeps the menu-bar item alive. The 1.2s
-    # delay inside _hide_from_dock_later gives rumps time to fully wire
-    # up the NSStatusItem before we change policy.
-    threading.Thread(target=_hide_from_dock_later, daemon=True).start()
+    # Hide the Python/Dock icon BEFORE the status item is created.
+    # Menu-bar-only apps (LSUIElement) run as Accessory from launch and
+    # create their NSStatusItem just fine — the old approach (create the
+    # item in Regular mode, then flip to Accessory 1.2s later) raced with
+    # rumps' setup and macOS Tahoe sometimes dropped the status item on
+    # the flip, which users saw as "the menu bar icon disappeared".
+    try:
+        from AppKit import NSApplication
+        NSApplication.sharedApplication().setActivationPolicy_(1)  # Accessory
+        log.info("Activation policy set to Accessory (pre-run)")
+    except Exception as e:
+        log.warning("Could not set accessory policy: %s", e)
 
     log.info("Whisper Dictation started (mode=%s, hotkey=%s).",
              S.get("mode"), S.get("hotkey"))
