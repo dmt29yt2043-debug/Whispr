@@ -6,7 +6,7 @@
       "area": "history",
       "desc": "added dictations come back newest-first with timestamps",
       "status": "PASS",
-      "ms": 2,
+      "ms": 3,
       "error": null
     },
     {

@@ -1228,7 +1228,34 @@ class WhisperDictationApp(rumps.App):
         rumps.quit_application()
 
 
+def _acquire_singleton_lock():
+    """Exit if another instance is already running.
+
+    The app can be started two ways — the LaunchAgent (primary, python3
+    directly) and the /Applications bundle (Launchpad convenience). If
+    both run, two hotkey taps and two recorders fight over the mic. An
+    exclusive flock on a lockfile is atomic and self-releasing on process
+    death. Returns the open file object (must stay referenced for the
+    lifetime of the process).
+    """
+    import fcntl
+    lock_path = os.path.expanduser("~/.whisper-dictation/app.lock")
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    f = open(lock_path, "w")
+    try:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        log.info("Another instance is already running — exiting")
+        sys.exit(0)
+    f.write(str(os.getpid()))
+    f.flush()
+    return f
+
+
 def main():
+    global _singleton_lock
+    _singleton_lock = _acquire_singleton_lock()
+
     app = WhisperDictationApp()
 
     # Install the unified hotkey tap on the main CFRunLoop before app.run()
@@ -1241,18 +1268,77 @@ def main():
     # Install re-paste hotkey (Cmd+Shift+V)
     app.repaste_hotkey.start()
 
-    # Hide the Python/Dock icon BEFORE the status item is created.
-    # Menu-bar-only apps (LSUIElement) run as Accessory from launch and
-    # create their NSStatusItem just fine — the old approach (create the
-    # item in Regular mode, then flip to Accessory 1.2s later) raced with
-    # rumps' setup and macOS Tahoe sometimes dropped the status item on
-    # the flip, which users saw as "the menu bar icon disappeared".
+    # Rescue the status item from off-screen parking BEFORE it's created.
+    # macOS persists a per-app "preferred position" for every status item.
+    # On this machine the window server had parked our item beyond the
+    # left edge of the external display (NSStatusBarWindow frame probe
+    # showed x=-3924) — the item existed, isVisible()=True, but was
+    # outside every screen, so no icon/template/activation-policy fix
+    # could ever make it show. Writing a sane distance-from-right-edge
+    # before creation makes the window server place it inside the bar.
+    # Only write when the stored value is missing or absurd, so a manual
+    # ⌘-drag by the user is respected afterwards.
+    # IMPORTANT domain subtlety, learned the hard way: our process is
+    # python3 (the bundle's launcher execs it), so NSUserDefaults reads
+    # com.apple.python3 — but the WINDOW SERVER, when the app is launched
+    # via the bundle, keys the item position on the BUNDLE's domain
+    # (com.snigirev.whisper-dictation). With that domain empty, new items
+    # are appended at the LEFT END of the global status row, which on a
+    # multi-display setup lands beyond the leftmost display edge —
+    # invisible on every screen. Fix: seed the position in BOTH domains.
     try:
-        from AppKit import NSApplication
-        NSApplication.sharedApplication().setActivationPolicy_(1)  # Accessory
-        log.info("Activation policy set to Accessory (pre-run)")
+        from Foundation import NSUserDefaults
+        _pos_key = "NSStatusItem Preferred Position Item-0"
+        for _domain in (None, "com.snigirev.whisper-dictation", "com.apple.python3"):
+            try:
+                if _domain is None:
+                    _ud = NSUserDefaults.standardUserDefaults()
+                    _cur = _ud.objectForKey_(_pos_key)
+                else:
+                    _ud = NSUserDefaults.alloc().initWithSuiteName_(None)
+                    _pd = _ud.persistentDomainForName_(_domain) or {}
+                    _cur = _pd.get(_pos_key)
+                _ok = _cur is not None and 10.0 <= float(_cur) <= 1500.0
+            except Exception:
+                _ok = False
+            if not _ok:
+                try:
+                    if _domain is None:
+                        _ud.setFloat_forKey_(300.0, _pos_key)
+                        _ud.synchronize()
+                    else:
+                        _pd = dict(_ud.persistentDomainForName_(_domain) or {})
+                        _pd[_pos_key] = 300.0
+                        _ud.setPersistentDomain_forName_(_pd, _domain)
+                    log.info("Status item position seeded to 300 in %s (was %r)",
+                             _domain or "standard", _cur)
+                except Exception as e:
+                    log.warning("Position seed failed for %s: %s", _domain, e)
     except Exception as e:
-        log.warning("Could not set accessory policy: %s", e)
+        log.warning("Could not ensure status item position: %s", e)
+
+    # Dock-icon hiding MUST happen AFTER the status item exists.
+    # Empirical fact on macOS Tahoe, verified via CGWindowList: an
+    # NSStatusItem created while the app is in Accessory mode never gets
+    # a window — `Python items: []` — the menu bar icon simply does not
+    # exist. Created in Regular mode it works, and it SURVIVES a later
+    # flip to Accessory. So: launch Regular (Dock shows Python for ~3s),
+    # flip, then re-assert the icon as belt-and-suspenders.
+    def _flip_to_accessory_later():
+        import time as _t
+        _t.sleep(3.0)
+        try:
+            from AppKit import NSApplication
+            from PyObjCTools import AppHelper
+            AppHelper.callAfter(
+                lambda: NSApplication.sharedApplication().setActivationPolicy_(1))
+            log.info("Activation policy flipped to Accessory (post status-item)")
+        except Exception as e:
+            log.warning("Accessory flip failed: %s", e)
+        _t.sleep(1.0)
+        app._reassert_menu_icon(delay=0.5)
+
+    threading.Thread(target=_flip_to_accessory_later, daemon=True).start()
 
     log.info("Whisper Dictation started (mode=%s, hotkey=%s).",
              S.get("mode"), S.get("hotkey"))
