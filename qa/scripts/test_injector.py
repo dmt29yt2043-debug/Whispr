@@ -66,30 +66,45 @@ def test_clipboard_verify():
 
 @case("TC_029", "injector", "clipboard restore: skipped when user changes clipboard during wait")
 def test_restore_skipped_when_user_copies():
-    with patch("focus_check.get_focused_text_info", return_value=(True, "com.apple.Notes")):
-        with patch.object(injector, "_press_cmd_v"):
-            _reset_clipboard("original")
-            injector.inject_text("injected", check_focus=True, restore_clipboard=True)
-            # pretend the user copied something else during the restore wait
-            time.sleep(0.1)
-            pyperclip.copy("user-changed")
-            # Wait past restore window (0.6s)
-            time.sleep(0.8)
-            # User's copy must NOT have been overwritten by "original"
-            assert pyperclip.paste() == "user-changed", f"clipboard was {pyperclip.paste()!r}"
+    with patch.object(injector, "_RESTORE_DELAY_SEC", 0.3):
+        with patch("focus_check.get_focused_text_info", return_value=(True, "com.apple.Notes")):
+            with patch.object(injector, "_press_cmd_v"):
+                _reset_clipboard("original")
+                injector.inject_text("injected", check_focus=True, restore_clipboard=True)
+                # pretend the user copied something else during the restore wait
+                time.sleep(0.1)
+                pyperclip.copy("user-changed")
+                # Wait past the (shortened) restore window
+                time.sleep(0.5)
+                # User's copy must NOT have been overwritten by "original"
+                assert pyperclip.paste() == "user-changed", f"clipboard was {pyperclip.paste()!r}"
 
 
 @case("TC_INJ_RESTORE_HAPPY", "injector", "clipboard restore: restores when clipboard still ours")
 def test_restore_happy():
-    with patch("focus_check.get_focused_text_info", return_value=(True, "com.apple.Notes")):
-        with patch.object(injector, "_press_cmd_v"):
-            _reset_clipboard("original-clip")
-            injector.inject_text("injected-text", check_focus=True, restore_clipboard=True)
-            # Clipboard immediately after inject should be "injected-text"
-            assert pyperclip.paste() == "injected-text"
-            # Wait for restore
-            time.sleep(0.9)
-            assert pyperclip.paste() == "original-clip"
+    with patch.object(injector, "_RESTORE_DELAY_SEC", 0.3):
+        with patch("focus_check.get_focused_text_info", return_value=(True, "com.apple.Notes")):
+            with patch.object(injector, "_press_cmd_v"):
+                _reset_clipboard("original-clip")
+                injector.inject_text("injected-text", check_focus=True, restore_clipboard=True)
+                # Clipboard immediately after inject should be "injected-text"
+                assert pyperclip.paste() == "injected-text"
+                # Wait for restore
+                time.sleep(0.6)
+                assert pyperclip.paste() == "original-clip"
+
+
+@case("TC_INJ_RESTORE_DELAY_IS_SLOW_APP_SAFE", "injector",
+      "restore delay is >= 2s so slow Electron apps read OUR text, not the restored old clipboard")
+def test_restore_delay_covers_slow_apps():
+    """Regression for 'я диктую одно, а вставляется то, что в буфере':
+    the app processes Cmd+V asynchronously; restoring the old clipboard
+    after only 0.6s meant slow apps pasted the OLD content. The delay
+    must give even a busy Electron app time to read the pasteboard."""
+    assert injector._RESTORE_DELAY_SEC >= 2.0, (
+        f"restore delay {injector._RESTORE_DELAY_SEC}s is too short — "
+        "slow apps will paste the restored (stale) clipboard"
+    )
 
 
 @case("TC_036", "injector", "10 KB text handled without truncation")
@@ -129,17 +144,17 @@ def test_repaste_restores_clipboard():
     pyperclip.copy(user_clipboard)
     injector.set_last_transcription("dictated text to paste again")
 
-    with patch.object(injector, "_press_cmd_v"):
-        ok = injector.repaste_last()
-    assert ok is True
+    with patch.object(injector, "_RESTORE_DELAY_SEC", 0.3):
+        with patch.object(injector, "_press_cmd_v"):
+            ok = injector.repaste_last()
+        assert ok is True
 
-    # Restore happens in a background thread after ~600ms.
-    # Wait up to 2s for it.
-    deadline = time.time() + 2.0
-    while time.time() < deadline:
-        if pyperclip.paste() == user_clipboard:
-            break
-        time.sleep(0.05)
+        # Restore happens in a background thread after the delay.
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            if pyperclip.paste() == user_clipboard:
+                break
+            time.sleep(0.05)
     assert pyperclip.paste() == user_clipboard, (
         f"clipboard not restored — got {pyperclip.paste()!r}"
     )
@@ -153,17 +168,17 @@ def test_repaste_does_not_clobber_user_copy():
     pyperclip.copy("original clip")
     injector.set_last_transcription("dictated")
 
-    with patch.object(injector, "_press_cmd_v"):
-        ok = injector.repaste_last()
-    assert ok is True
+    with patch.object(injector, "_RESTORE_DELAY_SEC", 0.3):
+        with patch.object(injector, "_press_cmd_v"):
+            ok = injector.repaste_last()
+        assert ok is True
 
-    # Simulate user copying something NEW immediately after re-paste.
-    # The restore thread sleeps 0.6s before acting.
-    time.sleep(0.1)
-    pyperclip.copy("user's brand-new copy")
+        # Simulate user copying something NEW immediately after re-paste.
+        time.sleep(0.1)
+        pyperclip.copy("user's brand-new copy")
 
-    # Wait past the restore delay
-    time.sleep(0.9)
+        # Wait past the (shortened) restore delay
+        time.sleep(0.5)
     assert pyperclip.paste() == "user's brand-new copy", (
         "restore overwrote the user's new copy (data loss bug)"
     )

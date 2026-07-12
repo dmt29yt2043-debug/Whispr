@@ -6,7 +6,7 @@
       "area": "injector",
       "desc": "empty text returns 'skipped', doesn't touch clipboard",
       "status": "PASS",
-      "ms": 58,
+      "ms": 62,
       "error": null
     },
     {
@@ -14,7 +14,7 @@
       "area": "injector",
       "desc": "whitespace-only text returns 'skipped'",
       "status": "PASS",
-      "ms": 127,
+      "ms": 216,
       "error": null
     },
     {
@@ -22,7 +22,7 @@
       "area": "injector",
       "desc": "no text focus \u2192 returns 'copied', clipboard set, no paste",
       "status": "PASS",
-      "ms": 56,
+      "ms": 61,
       "error": null
     },
     {
@@ -30,7 +30,7 @@
       "area": "injector",
       "desc": "text focus \u2192 returns 'pasted', fires Cmd+V",
       "status": "PASS",
-      "ms": 56,
+      "ms": 59,
       "error": null
     },
     {
@@ -38,7 +38,7 @@
       "area": "injector",
       "desc": "clipboard verification: waits for clipboard to settle before paste",
       "status": "PASS",
-      "ms": 0,
+      "ms": 2,
       "error": null
     },
     {
@@ -46,7 +46,7 @@
       "area": "injector",
       "desc": "clipboard restore: skipped when user changes clipboard during wait",
       "status": "PASS",
-      "ms": 968,
+      "ms": 671,
       "error": null
     },
     {
@@ -54,7 +54,15 @@
       "area": "injector",
       "desc": "clipboard restore: restores when clipboard still ours",
       "status": "PASS",
-      "ms": 966,
+      "ms": 654,
+      "error": null
+    },
+    {
+      "id": "TC_INJ_RESTORE_DELAY_IS_SLOW_APP_SAFE",
+      "area": "injector",
+      "desc": "restore delay is >= 2s so slow Electron apps read OUR text, not the restored old clipboard",
+      "status": "PASS",
+      "ms": 0,
       "error": null
     },
     {
@@ -62,7 +70,7 @@
       "area": "injector",
       "desc": "10 KB text handled without truncation",
       "status": "PASS",
-      "ms": 3,
+      "ms": 2,
       "error": null
     },
     {
@@ -86,7 +94,7 @@
       "area": "injector",
       "desc": "after re-paste, original clipboard content is restored \u2014 user's copied data is preserved",
       "status": "PASS",
-      "ms": 648,
+      "ms": 327,
       "error": null
     },
     {
@@ -94,7 +102,7 @@
       "area": "injector",
       "desc": "if user copies something new during re-paste, we do NOT clobber it on restore",
       "status": "PASS",
-      "ms": 1014,
+      "ms": 608,
       "error": null
     }
   ]

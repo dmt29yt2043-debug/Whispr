@@ -6,7 +6,7 @@
       "area": "vad",
       "desc": "pure silence \u2192 None (no speech)",
       "status": "PASS",
-      "ms": 1,
+      "ms": 4,
       "error": null
     },
     {
@@ -14,7 +14,7 @@
       "area": "vad",
       "desc": "tone + silence \u2192 returns trimmed WAV",
       "status": "PASS",
-      "ms": 1,
+      "ms": 7,
       "error": null
     },
     {
@@ -22,7 +22,7 @@
       "area": "vad",
       "desc": "<0.3s audio bypasses VAD, returns original",
       "status": "PASS",
-      "ms": 9,
+      "ms": 22,
       "error": null
     },
     {
@@ -30,7 +30,7 @@
       "area": "vad",
       "desc": "VAD failure on silent audio \u2192 None (pipeline will use raw)",
       "status": "PASS",
-      "ms": 0,
+      "ms": 1,
       "error": null
     },
     {
@@ -54,7 +54,7 @@
       "area": "recorder",
       "desc": "start/stop serialized via _op_lock; rapid calls do not race",
       "status": "PASS",
-      "ms": 503,
+      "ms": 694,
       "error": null
     },
     {
@@ -62,7 +62,7 @@
       "area": "recorder",
       "desc": "recording <0.4s \u2192 returns None, no orphan WAV",
       "status": "PASS",
-      "ms": 237,
+      "ms": 325,
       "error": null
     },
     {
@@ -78,7 +78,7 @@
       "area": "recorder",
       "desc": "wake \u2192 reinit happens (either in async warm-up OR at start()); dirty flag is cleared by end of start()",
       "status": "PASS",
-      "ms": 444,
+      "ms": 663,
       "error": null
     },
     {
@@ -86,7 +86,7 @@
       "area": "recorder",
       "desc": "start() without dirty flag does NOT call PortAudio reinit (cheap path)",
       "status": "PASS",
-      "ms": 241,
+      "ms": 299,
       "error": null
     },
     {
@@ -102,7 +102,7 @@
       "area": "recorder",
       "desc": "InputStream open fails on every attempt \u2192 returns None, no infinite loop",
       "status": "PASS",
-      "ms": 202,
+      "ms": 207,
       "error": null
     },
     {

@@ -23,6 +23,17 @@ log = logging.getLogger(__name__)
 
 V_KEY_CODE = 9  # 'V' on macOS
 
+# How long to wait before putting the user's previous clipboard back.
+#
+# The Cmd+V we post is processed ASYNCHRONOUSLY by the target app — it
+# reads the pasteboard whenever it gets around to handling the key event.
+# Electron apps (Claude, ChatGPT, Slack) under load can take well over
+# 600ms. The old 0.6s delay lost that race: we restored the OLD clipboard
+# before the app read the NEW text, so the app pasted stale clipboard
+# content instead of the dictation. 2s comfortably covers slow apps; the
+# restore is still skipped entirely if the user copied something newer.
+_RESTORE_DELAY_SEC = 2.0
+
 # Module-level cache of the last transcription so the re-paste hotkey
 # can recover text if the user's cursor was off-target at paste time.
 _last_transcription: str = ""
@@ -100,13 +111,13 @@ def repaste_last(restore_clipboard: bool = True) -> bool:
         # new during the wait, in which case we must not clobber their copy).
         if restore_clipboard and prev_clipboard is not None:
             def _restore():
-                time.sleep(0.6)
+                time.sleep(_RESTORE_DELAY_SEC)
                 try:
                     if pyperclip.paste() == text:
                         pyperclip.copy(prev_clipboard)
-                        log.debug("Clipboard restored after re-paste")
+                        log.info("Clipboard restored after re-paste (%.1fs)", _RESTORE_DELAY_SEC)
                     else:
-                        log.debug("Clipboard changed by user — skipping restore")
+                        log.info("Clipboard changed by user — skipping restore")
                 except Exception:
                     pass
             threading.Thread(target=_restore, daemon=True).start()
@@ -169,17 +180,19 @@ def inject_text(
 
         # Restore previous clipboard — but ONLY if the clipboard still
         # contains the text we just injected. If the user copied something
-        # new during the 0.6s wait, we must not clobber their copy.
+        # new during the wait, we must not clobber their copy. The delay
+        # must outlast the target app's async handling of Cmd+V — see
+        # _RESTORE_DELAY_SEC.
         if restore_clipboard and prev_clipboard is not None:
             injected = text  # capture for closure
             def _restore():
-                time.sleep(0.6)
+                time.sleep(_RESTORE_DELAY_SEC)
                 try:
                     if pyperclip.paste() == injected:
                         pyperclip.copy(prev_clipboard)
-                        log.debug("Clipboard restored")
+                        log.info("Clipboard restored (%.1fs after paste)", _RESTORE_DELAY_SEC)
                     else:
-                        log.debug("Clipboard was changed by user — skipping restore")
+                        log.info("Clipboard was changed by user — skipping restore")
                 except Exception:
                     pass
             threading.Thread(target=_restore, daemon=True).start()

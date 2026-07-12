@@ -38,7 +38,7 @@
       "area": "replacements",
       "desc": "value with HTML/script stored + returned verbatim (no exec)",
       "status": "PASS",
-      "ms": 0,
+      "ms": 1,
       "error": null
     },
     {
@@ -46,7 +46,7 @@
       "area": "replacements",
       "desc": "trigger with path chars stored as data, NOT used as path",
       "status": "PASS",
-      "ms": 0,
+      "ms": 2,
       "error": null
     },
     {
@@ -54,7 +54,7 @@
       "area": "replacements",
       "desc": "load_replacements reads what save_replacements wrote",
       "status": "PASS",
-      "ms": 0,
+      "ms": 1,
       "error": null
     },
     {
