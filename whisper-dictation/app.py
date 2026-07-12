@@ -149,44 +149,76 @@ ICON_REC = "● REC"
 ICON_PROCESSING = "⏳"
 
 # Real paths get filled in __init__ via mic_icon.ensure_*; menu-bar
-# state transitions use _set_menu_icon() to swap path/title atomically.
-_MENU_BAR_ICON_IDLE: str = ""
+# state transitions use _set_title_safe() to swap path/title atomically.
+# Idle comes in TWO colour variants — the app picks per system appearance
+# (template images render blank in the status item on this macOS build,
+# so auto-tinting is off the table; the coloured REC icon always worked).
+_MENU_BAR_ICON_IDLE_WHITE: str = ""
+_MENU_BAR_ICON_IDLE_BLACK: str = ""
 _MENU_BAR_ICON_REC: str = ""
+
+
+def _menu_bar_is_dark() -> bool:
+    """True if the menu bar renders light-on-dark (needs the white glyph)."""
+    try:
+        from AppKit import NSApplication
+        ap = NSApplication.sharedApplication().effectiveAppearance()
+        name = ap.bestMatchFromAppearancesWithNames_(
+            ["NSAppearanceNameAqua", "NSAppearanceNameDarkAqua"])
+        return name == "NSAppearanceNameDarkAqua"
+    except Exception:
+        pass
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["defaults", "read", "-g", "AppleInterfaceStyle"],
+            capture_output=True, text=True, timeout=2,
+        )
+        return out.stdout.strip().lower() == "dark"
+    except Exception:
+        # Most macOS users (and this one) run dark mode — white is the
+        # safer blind default.
+        return True
+
+
+def _current_idle_icon() -> str:
+    """Pick the idle icon variant matching the current appearance."""
+    if _menu_bar_is_dark():
+        return _MENU_BAR_ICON_IDLE_WHITE or _MENU_BAR_ICON_IDLE_BLACK
+    return _MENU_BAR_ICON_IDLE_BLACK or _MENU_BAR_ICON_IDLE_WHITE
 
 
 class WhisperDictationApp(rumps.App):
     def __init__(self):
-        # Generate the custom mic icon BEFORE super().__init__ — rumps reads
+        # Generate the custom mic icons BEFORE super().__init__ — rumps reads
         # the icon argument immediately when constructing the status item.
-        global _MENU_BAR_ICON_IDLE, _MENU_BAR_ICON_REC
+        global _MENU_BAR_ICON_IDLE_WHITE, _MENU_BAR_ICON_IDLE_BLACK, _MENU_BAR_ICON_REC
         try:
             import mic_icon
-            _MENU_BAR_ICON_IDLE = mic_icon.ensure_menu_bar_icon() or ""
+            _MENU_BAR_ICON_IDLE_WHITE = mic_icon.ensure_menu_bar_icon(dark_menu_bar=True) or ""
+            _MENU_BAR_ICON_IDLE_BLACK = mic_icon.ensure_menu_bar_icon(dark_menu_bar=False) or ""
             _MENU_BAR_ICON_REC = mic_icon.ensure_menu_bar_icon_recording() or ""
         except Exception as e:
             log.warning("Custom mic icon generation failed: %s — falling back to emoji", e)
 
-        if _MENU_BAR_ICON_IDLE:
-            # Template icon: black+alpha PNG, macOS auto-tints it to match
-            # the menu bar (black on light, white on dark). A coloured
-            # (navy) icon was tried before and was invisible on dark bars.
+        idle_icon = _current_idle_icon()
+        if idle_icon:
+            # Coloured icon, template=False — template rendering produces a
+            # blank status item on this macOS build (see _menu_bar_is_dark).
             super().__init__(
                 name="Whisper Dictation",
                 title=None,
-                icon=_MENU_BAR_ICON_IDLE,
-                template=True,
+                icon=idle_icon,
+                template=False,
                 quit_button=None,
             )
         else:
             super().__init__(ICON_IDLE, quit_button=None)
 
-        # Last-applied menu bar state (icon path, template, title) — used
-        # by _reassert_menu_icon() to restore the glyph after display
-        # reconfigurations. Matches what super().__init__ just applied.
-        self._bar_state = (
-            (_MENU_BAR_ICON_IDLE or None, True, None)
-            if _MENU_BAR_ICON_IDLE else (None, None, ICON_IDLE)
-        )
+        # Last menu-bar STATE (one of the ICON_* constants) — replayed by
+        # _reassert_menu_icon() after display/theme changes, resolving the
+        # correct icon variant at replay time.
+        self._last_bar_title = ICON_IDLE
 
         # Ensure settings exist on disk
         S.load()
@@ -260,6 +292,10 @@ class WhisperDictationApp(rumps.App):
         # macOS occasionally drops status-item images during display
         # reconfiguration, which users saw as "the icon disappeared".
         self._install_screen_change_observer()
+
+        # Swap the white/black idle glyph when the user toggles light/dark
+        # mode (we can't use template auto-tinting — it renders blank).
+        self._install_theme_change_observer()
 
         # Surface API outages (quota exhausted) as a one-shot notification
         # rather than letting the user wait through 20s of silent retries.
@@ -470,30 +506,32 @@ class WhisperDictationApp(rumps.App):
         """
         from PyObjCTools import AppHelper
 
+        # Remember the STATE (not the resolved path) so a later re-assert
+        # picks the right icon variant for the theme at that moment.
+        self._last_bar_title = title
+
         # Decide which icon path goes with this title — based on the
-        # status string the existing callers use.
+        # status string the existing callers use. All icons are coloured
+        # with template=False: template images render blank in the status
+        # item on this macOS build.
+        idle_icon = _current_idle_icon()
         if title == ICON_REC and _MENU_BAR_ICON_REC:
             target_icon, target_template = _MENU_BAR_ICON_REC, False
             target_title = None  # icon alone, no "● REC" text — keeps the bar tidy
-        elif title == ICON_IDLE and _MENU_BAR_ICON_IDLE:
-            # template=True — auto-tinted for light/dark menu bar
-            target_icon, target_template = _MENU_BAR_ICON_IDLE, True
+        elif title == ICON_IDLE and idle_icon:
+            target_icon, target_template = idle_icon, False
             target_title = None
-        elif title == ICON_PROCESSING and _MENU_BAR_ICON_IDLE:
+        elif title == ICON_PROCESSING and idle_icon:
             # Keep the mic glyph and show the hourglass NEXT to it.
             # Never set icon=None here: a status item whose icon
             # assignment later fails while title is also empty renders
             # ZERO-width — i.e. the icon "vanishes" from the menu bar.
-            target_icon, target_template = _MENU_BAR_ICON_IDLE, True
+            target_icon, target_template = idle_icon, False
             target_title = title
         else:
             # No custom icons available — fall back to text/emoji only
             target_icon, target_template = None, None
             target_title = title
-
-        # Remember the desired state so _reassert_menu_icon() can restore
-        # it after display reconfiguration (monitor plug/unplug, wake).
-        self._bar_state = (target_icon, target_template, target_title)
 
         def _do():
             try:
@@ -516,37 +554,46 @@ class WhisperDictationApp(rumps.App):
         AppHelper.callAfter(_do)
 
     def _reassert_menu_icon(self, delay: float = 1.0) -> None:
-        """Re-apply the last menu-bar state after a display change.
+        """Re-apply the last menu-bar state after a display/theme change.
 
-        When a monitor is plugged/unplugged (or the Mac wakes into a
-        different display configuration), macOS rebuilds the menu bar and
-        occasionally drops or blanks status-item images. Re-assigning the
-        same icon path is idempotent and forces the item to redraw. The
-        short delay lets the window server finish reconfiguring first.
+        When a monitor is plugged/unplugged, the Mac wakes into a different
+        display configuration, or the user switches light/dark mode, macOS
+        rebuilds the menu bar and occasionally drops or blanks status-item
+        images. Replaying the last state through _set_title_safe resolves
+        the correct icon variant for the CURRENT theme and forces a redraw.
         """
-        state = getattr(self, "_bar_state", None)
-        if state is None:
+        title = getattr(self, "_last_bar_title", None)
+        if title is None:
             return
 
         def _later():
             import time as _t
             _t.sleep(delay)
-            icon, template, title_text = state
-            from PyObjCTools import AppHelper
-            def _do():
-                try:
-                    if icon is not None:
-                        self.icon = icon
-                        try:
-                            self.template = template
-                        except Exception:
-                            pass
-                        self.title = title_text
-                except Exception:
-                    pass
-            AppHelper.callAfter(_do)
+            self._set_title_safe(title)
 
         threading.Thread(target=_later, daemon=True).start()
+
+    def _install_theme_change_observer(self) -> None:
+        """Re-pick the idle icon colour when light/dark mode changes."""
+        try:
+            from Foundation import NSObject, NSDistributedNotificationCenter
+            outer = self
+
+            class _ThemeObserver(NSObject):
+                def themeChanged_(self, _note):
+                    log.info("System theme changed — re-picking menu bar icon")
+                    outer._reassert_menu_icon(delay=0.8)
+
+            self._theme_observer = _ThemeObserver.alloc().init()
+            NSDistributedNotificationCenter.defaultCenter().addObserver_selector_name_object_(
+                self._theme_observer,
+                "themeChanged:",
+                "AppleInterfaceThemeChangedNotification",
+                None,
+            )
+            log.info("Theme-change observer installed")
+        except Exception as e:
+            log.warning("Could not install theme observer: %s", e)
 
     def _install_screen_change_observer(self) -> None:
         """Re-assert the menu-bar icon whenever displays are reconfigured.

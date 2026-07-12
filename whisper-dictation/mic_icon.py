@@ -217,23 +217,31 @@ def _save_png(img: "NSImage", path: str) -> bool:  # type: ignore
         return False
 
 
-def ensure_menu_bar_icon() -> Optional[str]:
-    """Generate (if missing) and return path to the menu-bar TEMPLATE PNG.
+def ensure_menu_bar_icon(dark_menu_bar: bool = True) -> Optional[str]:
+    """Generate and return the idle menu-bar PNG for the given appearance.
 
-    Pure black on transparency, used with template=True: macOS tints it
-    black in a light menu bar and WHITE in a dark one. The earlier
-    "coloured navy" experiment was unreadable on dark menu bars (navy on
-    near-black) — which users reported as "the icon is not there".
+    EXPLICITLY COLOURED, NOT a template image. Empirical finding on this
+    user's macOS Tahoe: template images render BLANK in the status item
+    (the red REC icon — template=False — always showed; the template idle
+    icon never did). So we render two concrete variants and the app picks
+    per system appearance, swapping on theme-change notifications:
+      dark bar  → white glyph
+      light bar → near-black glyph
     """
     os.makedirs(_ICON_DIR, exist_ok=True)
-    path = os.path.join(_ICON_DIR, "menu_bar_mic.png")
+    if dark_menu_bar:
+        path = os.path.join(_ICON_DIR, "menu_bar_mic_white.png")
+        color = (1.0, 1.0, 1.0, 1.0)
+    else:
+        path = os.path.join(_ICON_DIR, "menu_bar_mic_black.png")
+        color = (0.08, 0.08, 0.08, 1.0)
 
     # Always regenerate — it's cheap (< 5 ms) and ensures the file matches
     # the current overlay geometry if either file changes.
     try:
-        img = _draw_mic_into_context(_MENU_BAR_PT, color_tuple=(0.0, 0.0, 0.0, 1.0))
+        img = _draw_mic_into_context(_MENU_BAR_PT, color_tuple=color)
         if _save_png(img, path):
-            log.info("Menu-bar icon written: %s", path)
+            log.info("Menu-bar icon written: %s (dark_bar=%s)", path, dark_menu_bar)
             return path
     except Exception as e:
         log.warning("ensure_menu_bar_icon failed: %s", e)

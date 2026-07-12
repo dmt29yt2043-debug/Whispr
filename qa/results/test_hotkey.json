@@ -14,7 +14,7 @@
       "area": "hotkey",
       "desc": "single short tap \u2192 start + stop after double-tap timeout",
       "status": "PASS",
-      "ms": 465,
+      "ms": 455,
       "error": null
     },
     {
@@ -38,7 +38,7 @@
       "area": "hotkey",
       "desc": "reset_state() cancels pending double-tap timer",
       "status": "PASS",
-      "ms": 653,
+      "ms": 655,
       "error": null
     },
     {

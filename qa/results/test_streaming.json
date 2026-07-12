@@ -62,7 +62,7 @@
       "area": "streaming",
       "desc": "commit_and_wait returns immediately after completed (no 0.7s poll tax)",
       "status": "PASS",
-      "ms": 105,
+      "ms": 103,
       "error": null
     },
     {

@@ -6,7 +6,7 @@
       "area": "transcriber",
       "desc": "short audio (\u22648s) with realistic chars/sec \u2192 returns gpt-4o-transcribe result, no fallback",
       "status": "PASS",
-      "ms": 20,
+      "ms": 24,
       "error": null
     },
     {
@@ -86,7 +86,7 @@
       "area": "transcriber",
       "desc": "48kHz WAV is re-encoded to 16kHz mono FLAC, much smaller, same duration",
       "status": "PASS",
-      "ms": 17,
+      "ms": 13,
       "error": null
     },
     {

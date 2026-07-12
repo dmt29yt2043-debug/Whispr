@@ -462,7 +462,7 @@
         "area": "history",
         "desc": "history is capped \u2014 oldest entries pruned",
         "status": "PASS",
-        "ms": 8,
+        "ms": 10,
         "error": null
       },
       {
@@ -504,7 +504,7 @@
         "area": "hotkey",
         "desc": "single short tap \u2192 start + stop after double-tap timeout",
         "status": "PASS",
-        "ms": 465,
+        "ms": 455,
         "error": null
       },
       {
@@ -528,7 +528,7 @@
         "area": "hotkey",
         "desc": "reset_state() cancels pending double-tap timer",
         "status": "PASS",
-        "ms": 653,
+        "ms": 655,
         "error": null
       },
       {
@@ -562,7 +562,7 @@
         "area": "injector",
         "desc": "empty text returns 'skipped', doesn't touch clipboard",
         "status": "PASS",
-        "ms": 58,
+        "ms": 59,
         "error": null
       },
       {
@@ -602,7 +602,7 @@
         "area": "injector",
         "desc": "clipboard restore: skipped when user changes clipboard during wait",
         "status": "PASS",
-        "ms": 662,
+        "ms": 663,
         "error": null
       },
       {
@@ -610,7 +610,7 @@
         "area": "injector",
         "desc": "clipboard restore: restores when clipboard still ours",
         "status": "PASS",
-        "ms": 666,
+        "ms": 663,
         "error": null
       },
       {
@@ -626,7 +626,7 @@
         "area": "injector",
         "desc": "10 KB text handled without truncation",
         "status": "PASS",
-        "ms": 4,
+        "ms": 2,
         "error": null
       },
       {
@@ -650,7 +650,7 @@
         "area": "injector",
         "desc": "after re-paste, original clipboard content is restored \u2014 user's copied data is preserved",
         "status": "PASS",
-        "ms": 322,
+        "ms": 332,
         "error": null
       },
       {
@@ -658,7 +658,7 @@
         "area": "injector",
         "desc": "if user copies something new during re-paste, we do NOT clobber it on restore",
         "status": "PASS",
-        "ms": 615,
+        "ms": 614,
         "error": null
       }
     ],
@@ -702,7 +702,7 @@
         "area": "performance",
         "desc": "10 threads \u00d7 100 stats writes \u2014 latency p95 <50ms",
         "status": "PASS",
-        "ms": 364,
+        "ms": 471,
         "error": null
       },
       {
@@ -710,7 +710,7 @@
         "area": "performance",
         "desc": "20 threads \u00d7 50 settings writes \u2014 no lost writes, fast",
         "status": "PASS",
-        "ms": 591,
+        "ms": 627,
         "error": null
       },
       {
@@ -718,7 +718,7 @@
         "area": "performance",
         "desc": "anti-hallucination filter on 10,000 inputs < 1s",
         "status": "PASS",
-        "ms": 30,
+        "ms": 32,
         "error": null
       }
     ],
@@ -860,7 +860,7 @@
         "area": "settings",
         "desc": "corrupted JSON \u2192 defaults, no crash",
         "status": "PASS",
-        "ms": 0,
+        "ms": 1,
         "error": null
       },
       {
@@ -884,7 +884,7 @@
         "area": "settings",
         "desc": "50 concurrent set() from 20 threads \u2014 no lost writes",
         "status": "PASS",
-        "ms": 12,
+        "ms": 14,
         "error": null
       },
       {
@@ -926,7 +926,7 @@
         "area": "stats",
         "desc": "10 threads \u00d7 100 increments \u2014 no lost writes",
         "status": "PASS",
-        "ms": 386,
+        "ms": 388,
         "error": null
       },
       {
@@ -1016,7 +1016,7 @@
         "area": "streaming",
         "desc": "commit_and_wait returns immediately after completed (no 0.7s poll tax)",
         "status": "PASS",
-        "ms": 105,
+        "ms": 103,
         "error": null
       },
       {
@@ -1034,7 +1034,7 @@
         "area": "transcriber",
         "desc": "short audio (\u22648s) with realistic chars/sec \u2192 returns gpt-4o-transcribe result, no fallback",
         "status": "PASS",
-        "ms": 20,
+        "ms": 24,
         "error": null
       },
       {
@@ -1114,7 +1114,7 @@
         "area": "transcriber",
         "desc": "48kHz WAV is re-encoded to 16kHz mono FLAC, much smaller, same duration",
         "status": "PASS",
-        "ms": 17,
+        "ms": 13,
         "error": null
       },
       {
@@ -1132,7 +1132,7 @@
         "area": "vad",
         "desc": "pure silence \u2192 None (no speech)",
         "status": "PASS",
-        "ms": 2,
+        "ms": 1,
         "error": null
       },
       {
@@ -1180,7 +1180,7 @@
         "area": "recorder",
         "desc": "start/stop serialized via _op_lock; rapid calls do not race",
         "status": "PASS",
-        "ms": 469,
+        "ms": 635,
         "error": null
       },
       {
@@ -1188,7 +1188,7 @@
         "area": "recorder",
         "desc": "recording <0.4s \u2192 returns None, no orphan WAV",
         "status": "PASS",
-        "ms": 221,
+        "ms": 288,
         "error": null
       },
       {
@@ -1204,7 +1204,7 @@
         "area": "recorder",
         "desc": "wake \u2192 reinit happens (either in async warm-up OR at start()); dirty flag is cleared by end of start()",
         "status": "PASS",
-        "ms": 430,
+        "ms": 495,
         "error": null
       },
       {
@@ -1212,7 +1212,7 @@
         "area": "recorder",
         "desc": "start() without dirty flag does NOT call PortAudio reinit (cheap path)",
         "status": "PASS",
-        "ms": 220,
+        "ms": 288,
         "error": null
       },
       {
@@ -1228,7 +1228,7 @@
         "area": "recorder",
         "desc": "InputStream open fails on every attempt \u2192 returns None, no infinite loop",
         "status": "PASS",
-        "ms": 207,
+        "ms": 205,
         "error": null
       },
       {

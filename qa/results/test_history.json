@@ -22,7 +22,7 @@
       "area": "history",
       "desc": "history is capped \u2014 oldest entries pruned",
       "status": "PASS",
-      "ms": 8,
+      "ms": 10,
       "error": null
     },
     {
