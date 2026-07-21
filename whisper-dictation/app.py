@@ -251,6 +251,10 @@ class WhisperDictationApp(rumps.App):
 
         # Menu items
         self.record_item = rumps.MenuItem("🔴 Start Recording", callback=self._toggle_recording)
+        # One-click recovery: cursor landed in the wrong field → open the
+        # menu, click this, Cmd+V where the text SHOULD have gone.
+        self.copy_last_item = rumps.MenuItem(
+            "📋 Copy Last Dictation", callback=self._copy_last_dictation)
         self.history_item = rumps.MenuItem("🕘 Recent Dictations")
         self.stats_item = rumps.MenuItem("📊 Statistics", callback=self._show_stats)
         self.replacements_item = rumps.MenuItem("🔄 Text Replacements", callback=self._show_replacements)
@@ -260,6 +264,7 @@ class WhisperDictationApp(rumps.App):
 
         self.menu = [
             self.record_item,
+            self.copy_last_item,
             rumps.separator,
             self.history_item,
             self.stats_item,
@@ -403,6 +408,29 @@ class WhisperDictationApp(rumps.App):
         from PyObjCTools import AppHelper
         AppHelper.callAfter(_do)
 
+    def _copy_last_dictation(self, _sender=None) -> None:
+        """Menu: put the most recent dictation back on the clipboard."""
+        text = _injector.get_last_transcription()
+        if not text:
+            # App may have restarted since the dictation — fall back to history
+            try:
+                import history
+                rows = history.get_recent(limit=1)
+                text = rows[0][2] if rows else ""
+            except Exception:
+                text = ""
+        if not text:
+            self._notify("Nothing to copy", "No dictations yet")
+            return
+        try:
+            import pyperclip
+            pyperclip.copy(text)
+            _injector.set_last_transcription(text)
+            preview = text[:80] + "…" if len(text) > 80 else text
+            self._notify("Copied — press Cmd+V to paste", preview)
+        except Exception as e:
+            log.warning("Copy last dictation failed: %s", e)
+
     def _copy_history_entry(self, sender) -> None:
         text = getattr(sender, "_full_text", "") or sender.title
         try:
@@ -453,7 +481,8 @@ class WhisperDictationApp(rumps.App):
 
     def _on_repaste(self) -> None:
         """Triggered by Cmd+Shift+V — re-paste the last transcription."""
-        ok = _injector.repaste_last()
+        ok = _injector.repaste_last(
+            restore_clipboard=S.get("restore_clipboard", False))
         if ok:
             self.overlay.show_done("↻ " + _injector.get_last_transcription())
         else:
@@ -854,7 +883,7 @@ class WhisperDictationApp(rumps.App):
             result = inject_text(
                 final_text,
                 check_focus=S.get("check_focus", True),
-                restore_clipboard=S.get("restore_clipboard", True),
+                restore_clipboard=S.get("restore_clipboard", False),
             )
 
             if result == "copied":
@@ -1288,32 +1317,38 @@ def main():
     # invisible on every screen. Fix: seed the position in BOTH domains.
     try:
         from Foundation import NSUserDefaults
-        _pos_key = "NSStatusItem Preferred Position Item-0"
-        for _domain in (None, "com.snigirev.whisper-dictation", "com.apple.python3"):
-            try:
-                if _domain is None:
-                    _ud = NSUserDefaults.standardUserDefaults()
-                    _cur = _ud.objectForKey_(_pos_key)
-                else:
-                    _ud = NSUserDefaults.alloc().initWithSuiteName_(None)
-                    _pd = _ud.persistentDomainForName_(_domain) or {}
-                    _cur = _pd.get(_pos_key)
-                _ok = _cur is not None and 10.0 <= float(_cur) <= 1500.0
-            except Exception:
-                _ok = False
-            if not _ok:
+        # Seed positions for BOTH the default identity (Item-0) and the
+        # fresh identity we rename to after startup (WhisprMic).
+        _pos_keys = (
+            "NSStatusItem Preferred Position Item-0",
+            "NSStatusItem Preferred Position WhisprMic",
+        )
+        for _pos_key in _pos_keys:
+            for _domain in (None, "com.snigirev.whisper-dictation", "com.apple.python3"):
                 try:
                     if _domain is None:
-                        _ud.setFloat_forKey_(300.0, _pos_key)
-                        _ud.synchronize()
+                        _ud = NSUserDefaults.standardUserDefaults()
+                        _cur = _ud.objectForKey_(_pos_key)
                     else:
-                        _pd = dict(_ud.persistentDomainForName_(_domain) or {})
-                        _pd[_pos_key] = 300.0
-                        _ud.setPersistentDomain_forName_(_pd, _domain)
-                    log.info("Status item position seeded to 300 in %s (was %r)",
-                             _domain or "standard", _cur)
-                except Exception as e:
-                    log.warning("Position seed failed for %s: %s", _domain, e)
+                        _ud = NSUserDefaults.alloc().initWithSuiteName_(None)
+                        _pd = _ud.persistentDomainForName_(_domain) or {}
+                        _cur = _pd.get(_pos_key)
+                    _ok = _cur is not None and 10.0 <= float(_cur) <= 1500.0
+                except Exception:
+                    _ok = False
+                if not _ok:
+                    try:
+                        if _domain is None:
+                            _ud.setFloat_forKey_(300.0, _pos_key)
+                            _ud.synchronize()
+                        else:
+                            _pd = dict(_ud.persistentDomainForName_(_domain) or {})
+                            _pd[_pos_key] = 300.0
+                            _ud.setPersistentDomain_forName_(_pd, _domain)
+                        log.info("Seeded %r=300 in %s (was %r)",
+                                 _pos_key, _domain or "standard", _cur)
+                    except Exception as e:
+                        log.warning("Position seed failed for %s: %s", _domain, e)
     except Exception as e:
         log.warning("Could not ensure status item position: %s", e)
 
@@ -1327,6 +1362,27 @@ def main():
     def _flip_to_accessory_later():
         import time as _t
         _t.sleep(3.0)
+        # Detach the status item from the cursed "Item-0" identity.
+        # macOS keys per-item state (position AND Tahoe's hidden/parked
+        # flag) on (app, autosaveName). Whatever hid Item-0 for the
+        # bundle identity survives every restart — but a FRESH autosave
+        # name starts clean, and we pre-seeded its preferred position.
+        try:
+            from PyObjCTools import AppHelper
+            item = getattr(app._nsapp, "nsstatusitem", None)
+            if item is not None:
+                def _rename():
+                    try:
+                        item.setAutosaveName_("WhisprMic")
+                        item.setVisible_(True)
+                        log.info("Status item autosave renamed to WhisprMic, visible=%s",
+                                 bool(item.isVisible()))
+                    except Exception as e:
+                        log.warning("Status item rename failed: %s", e)
+                AppHelper.callAfter(_rename)
+        except Exception as e:
+            log.warning("Status item rescue failed: %s", e)
+        _t.sleep(0.5)
         try:
             from AppKit import NSApplication
             from PyObjCTools import AppHelper

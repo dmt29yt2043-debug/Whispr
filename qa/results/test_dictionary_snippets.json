@@ -6,7 +6,7 @@
       "area": "dictionary",
       "desc": "no file \u2192 no terms, empty prompts",
       "status": "PASS",
-      "ms": 0,
+      "ms": 3,
       "error": null
     },
     {
@@ -14,7 +14,7 @@
       "area": "dictionary",
       "desc": "added terms appear in transcription prompt and cleanup instruction",
       "status": "PASS",
-      "ms": 0,
+      "ms": 1,
       "error": null
     },
     {
@@ -22,7 +22,7 @@
       "area": "dictionary",
       "desc": "case-insensitive dedup on add",
       "status": "PASS",
-      "ms": 0,
+      "ms": 1,
       "error": null
     },
     {
@@ -30,7 +30,7 @@
       "area": "dictionary",
       "desc": "# comment lines are ignored",
       "status": "PASS",
-      "ms": 0,
+      "ms": 4,
       "error": null
     },
     {

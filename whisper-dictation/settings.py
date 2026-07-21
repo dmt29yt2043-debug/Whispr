@@ -48,7 +48,14 @@ DEFAULTS: Dict[str, Any] = {
     # this is the Wispr Flow architecture. ~2.5x price of batch (still
     # ~$1/month at an hour of dictation). Batch remains the fallback.
     "use_streaming": True,
-    "restore_clipboard": True,
+    # After pasting a dictation, put the user's previous clipboard back?
+    # DEFAULT OFF: the restore raced slow apps' async Cmd+V handling —
+    # they'd read the pasteboard AFTER the restore and paste the OLD
+    # clipboard instead of the dictation. With restore off, the dictation
+    # simply stays in the clipboard: pasting is deterministic, and a
+    # mis-targeted paste is recoverable with a plain Cmd+V. Old clipboard
+    # content is the trade-off; dictation history covers recovery.
+    "restore_clipboard": False,
     "check_focus": True,               # check AX focus before paste
     # Voice snippets: say the trigger phrase alone → the template is pasted.
     # Example: {"моя подпись": "С уважением,\nМаксим"}

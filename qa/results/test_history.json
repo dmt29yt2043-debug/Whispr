@@ -6,7 +6,7 @@
       "area": "history",
       "desc": "added dictations come back newest-first with timestamps",
       "status": "PASS",
-      "ms": 3,
+      "ms": 12,
       "error": null
     },
     {
@@ -14,7 +14,7 @@
       "area": "history",
       "desc": "empty/whitespace text is not stored",
       "status": "PASS",
-      "ms": 0,
+      "ms": 2,
       "error": null
     },
     {
@@ -22,7 +22,7 @@
       "area": "history",
       "desc": "history is capped \u2014 oldest entries pruned",
       "status": "PASS",
-      "ms": 10,
+      "ms": 58,
       "error": null
     },
     {
@@ -30,7 +30,7 @@
       "area": "history",
       "desc": "clear() wipes everything",
       "status": "PASS",
-      "ms": 1,
+      "ms": 4,
       "error": null
     },
     {
@@ -38,7 +38,7 @@
       "area": "history",
       "desc": "entries survive reopening the DB (app restart scenario)",
       "status": "PASS",
-      "ms": 0,
+      "ms": 4,
       "error": null
     },
     {
