@@ -14,7 +14,7 @@
       "area": "performance",
       "desc": "20 threads \u00d7 50 settings writes \u2014 no lost writes, fast",
       "status": "PASS",
-      "ms": 594,
+      "ms": 618,
       "error": null
     },
     {
@@ -22,7 +22,7 @@
       "area": "performance",
       "desc": "anti-hallucination filter on 10,000 inputs < 1s",
       "status": "PASS",
-      "ms": 33,
+      "ms": 34,
       "error": null
     }
   ]

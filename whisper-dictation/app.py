@@ -158,33 +158,14 @@ _MENU_BAR_ICON_IDLE_BLACK: str = ""
 _MENU_BAR_ICON_REC: str = ""
 
 
-def _menu_bar_is_dark() -> bool:
-    """True if the menu bar renders light-on-dark (needs the white glyph)."""
-    try:
-        from AppKit import NSApplication
-        ap = NSApplication.sharedApplication().effectiveAppearance()
-        name = ap.bestMatchFromAppearancesWithNames_(
-            ["NSAppearanceNameAqua", "NSAppearanceNameDarkAqua"])
-        return name == "NSAppearanceNameDarkAqua"
-    except Exception:
-        pass
-    try:
-        import subprocess
-        out = subprocess.run(
-            ["defaults", "read", "-g", "AppleInterfaceStyle"],
-            capture_output=True, text=True, timeout=2,
-        )
-        return out.stdout.strip().lower() == "dark"
-    except Exception:
-        # Most macOS users (and this one) run dark mode — white is the
-        # safer blind default.
-        return True
-
-
 def _current_idle_icon() -> str:
-    """Pick the idle icon variant matching the current appearance."""
-    if _menu_bar_is_dark():
-        return _MENU_BAR_ICON_IDLE_WHITE or _MENU_BAR_ICON_IDLE_BLACK
+    """Idle icon path. A black-on-transparent glyph used as a TEMPLATE
+    image — macOS auto-tints it to match the menu bar (white on a dark
+    bar, black on a light one), exactly like the system icons. This
+    replaced the earlier fixed white/black variants that couldn't follow
+    the wallpaper-driven menu-bar appearance (icon stayed dark on a dark
+    bar). Verified live: a template status item adapts like system icons
+    once the off-screen-parking bug was fixed."""
     return _MENU_BAR_ICON_IDLE_BLACK or _MENU_BAR_ICON_IDLE_WHITE
 
 
@@ -203,13 +184,15 @@ class WhisperDictationApp(rumps.App):
 
         idle_icon = _current_idle_icon()
         if idle_icon:
-            # Coloured icon, template=False — template rendering produces a
-            # blank status item on this macOS build (see _menu_bar_is_dark).
+            # Template image (black glyph + alpha): macOS auto-tints it to
+            # match the menu bar — white on a dark bar, black on a light
+            # one — exactly like the system icons. The earlier
+            # template=False path left the icon dark on a dark menu bar.
             super().__init__(
                 name="Whisper Dictation",
                 title=None,
                 icon=idle_icon,
-                template=False,
+                template=True,
                 quit_button=None,
             )
         else:
@@ -539,23 +522,23 @@ class WhisperDictationApp(rumps.App):
         # picks the right icon variant for the theme at that moment.
         self._last_bar_title = title
 
-        # Decide which icon path goes with this title — based on the
-        # status string the existing callers use. All icons are coloured
-        # with template=False: template images render blank in the status
-        # item on this macOS build.
+        # Idle/processing use the TEMPLATE glyph (macOS auto-tints it to
+        # match the menu bar, like system icons). REC stays a coloured
+        # (red) non-template image so the recording state visibly stands
+        # out regardless of menu-bar appearance.
         idle_icon = _current_idle_icon()
         if title == ICON_REC and _MENU_BAR_ICON_REC:
             target_icon, target_template = _MENU_BAR_ICON_REC, False
             target_title = None  # icon alone, no "● REC" text — keeps the bar tidy
         elif title == ICON_IDLE and idle_icon:
-            target_icon, target_template = idle_icon, False
+            target_icon, target_template = idle_icon, True
             target_title = None
         elif title == ICON_PROCESSING and idle_icon:
             # Keep the mic glyph and show the hourglass NEXT to it.
             # Never set icon=None here: a status item whose icon
             # assignment later fails while title is also empty renders
             # ZERO-width — i.e. the icon "vanishes" from the menu bar.
-            target_icon, target_template = idle_icon, False
+            target_icon, target_template = idle_icon, True
             target_title = title
         else:
             # No custom icons available — fall back to text/emoji only

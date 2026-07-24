@@ -30,7 +30,7 @@
       "area": "stats",
       "desc": "10 threads \u00d7 100 increments \u2014 no lost writes",
       "status": "PASS",
-      "ms": 348,
+      "ms": 501,
       "error": null
     },
     {
@@ -54,7 +54,7 @@
       "area": "stats",
       "desc": "empty text/zero seconds doesn't add rows",
       "status": "PASS",
-      "ms": 0,
+      "ms": 1,
       "error": null
     }
   ]
