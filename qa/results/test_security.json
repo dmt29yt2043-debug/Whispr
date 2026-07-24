@@ -6,7 +6,7 @@
       "area": "security",
       "desc": "SQL injection attempt via model name is parameterized safely",
       "status": "PASS",
-      "ms": 10,
+      "ms": 3,
       "error": null
     },
     {

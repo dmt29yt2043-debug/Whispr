@@ -208,6 +208,16 @@ def filter_transcription(text: str) -> str:
     if not text:
         return ""
 
+    # 0. Repair Russian words the model rendered in Latin transliteration
+    #    with Slavic diacritics ("Duša" → "Душа"). The user dictates only
+    #    Russian or English, so a Latin word with háček/caron marks is a
+    #    mis-detected-language error, not a real foreign word.
+    try:
+        import translit_repair
+        text = translit_repair.repair(text)
+    except Exception as e:
+        log.debug("translit repair skipped: %s", e)
+
     # 1. Strip noise markers
     cleaned = _strip_brackets(text)
 

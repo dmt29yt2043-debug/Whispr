@@ -1,0 +1,69 @@
+{
+  "script": "test_translit_repair",
+  "results": [
+    {
+      "id": "TC_TRANSLIT_DUSA",
+      "area": "translit_repair",
+      "desc": "the reported case: 'Du\u0161a' \u2192 '\u0414\u0443\u0448\u0430'",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSLIT_IN_SENTENCE",
+      "area": "translit_repair",
+      "desc": "only the broken word is fixed, rest of the Russian sentence untouched",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSLIT_HACEK_WORDS",
+      "area": "translit_repair",
+      "desc": "various h\u00e1\u010dek words reverse-transliterate correctly",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSLIT_ENGLISH_UNTOUCHED",
+      "area": "translit_repair",
+      "desc": "plain-ASCII English words are never converted (no trigger diacritic)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSLIT_CYRILLIC_UNTOUCHED",
+      "area": "translit_repair",
+      "desc": "already-Cyrillic Russian passes through unchanged",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSLIT_NO_TRIGGER_NOOP",
+      "area": "translit_repair",
+      "desc": "text without any trigger diacritic is returned as-is (fast path)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSLIT_PRESERVES_PUNCT",
+      "area": "translit_repair",
+      "desc": "punctuation and capitalization around the fixed word are preserved",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_TRANSLIT_VIA_FILTER",
+      "area": "translit_repair",
+      "desc": "repair runs inside filter_transcription (both streaming and batch paths)",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    }
+  ]
+}

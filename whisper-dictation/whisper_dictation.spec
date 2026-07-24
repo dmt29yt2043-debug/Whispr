@@ -29,7 +29,7 @@ _local_modules = [
     "stats", "sounds", "hotkey", "overlay", "focus_check",
     "streaming_transcriber", "anti_hallucination", "vad", "settings",
     "api_status", "mic_icon", "history", "dictionary", "snippets",
-    "repaste_hotkey",
+    "repaste_hotkey", "translit_repair",
 ]
 
 # PyObjC submodules the app touches. collect_submodules keeps the

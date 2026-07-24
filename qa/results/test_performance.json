@@ -6,7 +6,7 @@
       "area": "performance",
       "desc": "10 threads \u00d7 100 stats writes \u2014 latency p95 <50ms",
       "status": "PASS",
-      "ms": 449,
+      "ms": 507,
       "error": null
     },
     {
@@ -14,7 +14,7 @@
       "area": "performance",
       "desc": "20 threads \u00d7 50 settings writes \u2014 no lost writes, fast",
       "status": "PASS",
-      "ms": 677,
+      "ms": 594,
       "error": null
     },
     {
