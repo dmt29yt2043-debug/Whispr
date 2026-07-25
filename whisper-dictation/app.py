@@ -774,12 +774,34 @@ class WhisperDictationApp(rumps.App):
                         raw_text = filter_transcription(streamed)
                         if raw_text:
                             chars_per_sec = len(raw_text) / audio_duration
+                            # Language sanity gate: the streaming model
+                            # sometimes drifts into Serbian/Belarusian/etc.
+                            # for part of an utterance ("Кажи моји задатак",
+                            # "Tegni дашоў"). The user dictates only RU/EN,
+                            # so any foreign-alphabet letter means the
+                            # streaming result is untrustworthy — discard it
+                            # and re-transcribe the SAME audio via the robust
+                            # batch model, which fixes even plain-ASCII
+                            # garbage words a char filter can't.
+                            _foreign = []
+                            try:
+                                import lang_guard
+                                _foreign = lang_guard.foreign_letters(raw_text)
+                            except Exception:
+                                pass
                             if chars_per_sec < 3.0:
                                 # Looks truncated — batch it
                                 log.warning(
                                     "Streaming gave %d chars for %.2fs (%.1f c/s) — "
                                     "likely truncated, falling back to batch",
                                     len(raw_text), audio_duration, chars_per_sec,
+                                )
+                                raw_text = None
+                            elif _foreign:
+                                log.warning(
+                                    "Streaming output has foreign-language letters "
+                                    "%r — re-transcribing via batch: %r",
+                                    "".join(sorted(set(_foreign)))[:20], raw_text[:60],
                                 )
                                 raw_text = None
                             else:
