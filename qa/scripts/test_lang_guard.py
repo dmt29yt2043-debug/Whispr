@@ -71,5 +71,64 @@ def test_yo():
     assert not g.is_suspicious("Ещё раз всё проверь")
 
 
+# ── Wrong Latin-script language (French/Spanish/…) — same alphabet as English ──
+
+@case("TC_LANG_FRENCH_REPORTED", "lang_guard",
+      "the reported French drift 'J'ai sur le file le jeu de Tiber Park' → suspicious")
+def test_french_reported():
+    assert g.is_suspicious("J'ai sur le file le jeu de Tiber Park")
+    assert g.looks_foreign_latin("J'ai sur le file le jeu de Tiber Park")
+
+
+@case("TC_LANG_FRENCH_ELISION", "lang_guard",
+      "French elision (c'est, qu'il) flagged even without marker words")
+def test_french_elision():
+    assert g.looks_foreign_latin("c'est la vie")
+    assert g.looks_foreign_latin("qu'il vienne")
+
+
+@case("TC_LANG_SPANISH", "lang_guard", "Spanish → suspicious")
+def test_spanish():
+    assert g.is_suspicious("Hola señor, muchas gracias")
+
+
+@case("TC_LANG_GERMAN", "lang_guard", "German → suspicious")
+def test_german():
+    assert g.is_suspicious("Ich habe das nicht gemacht")
+
+
+@case("TC_LANG_ITALIAN", "lang_guard", "Italian → suspicious")
+def test_italian():
+    assert g.is_suspicious("questo è molto grazie")
+
+
+@case("TC_LANG_ENGLISH_NOT_FLAGGED", "lang_guard",
+      "genuine English (incl. same sentence as the French drift) is NOT flagged")
+def test_english_not_flagged():
+    assert not g.is_suspicious("show me my tasks for today")
+    assert not g.is_suspicious("I have the game of Tiber Park on file")
+    assert not g.is_suspicious("open the file and check the json locally")
+    assert not g.looks_foreign_latin("we do not need this right now")
+
+
+@case("TC_LANG_ENGLISH_CONTRACTIONS", "lang_guard",
+      "English contractions (don't, it's, we'll) are not mistaken for Romance elision")
+def test_english_contractions():
+    assert not g.is_suspicious("don't worry, it's fine, we'll do it")
+
+
+@case("TC_LANG_ENGLISH_FOREIGN_NAME", "lang_guard",
+      "one stray foreign name word in English stays below threshold")
+def test_english_foreign_name():
+    assert not g.is_suspicious("Le Monde is a French newspaper")
+
+
+@case("TC_LANG_RU_EN_MIX_NOT_FLAGGED", "lang_guard",
+      "Russian with English words is not flagged as foreign Latin")
+def test_ru_en_mix():
+    assert not g.is_suspicious("дописали definition of done для команды")
+    assert not g.is_suspicious("Посмотри JSON файл, он лежит локально")
+
+
 if __name__ == "__main__":
     run_all("test_lang_guard")

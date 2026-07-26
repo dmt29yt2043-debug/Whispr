@@ -783,10 +783,11 @@ class WhisperDictationApp(rumps.App):
                             # and re-transcribe the SAME audio via the robust
                             # batch model, which fixes even plain-ASCII
                             # garbage words a char filter can't.
-                            _foreign = []
+                            _lang_reason = ""
                             try:
                                 import lang_guard
-                                _foreign = lang_guard.foreign_letters(raw_text)
+                                if lang_guard.is_suspicious(raw_text):
+                                    _lang_reason = lang_guard.reason(raw_text)
                             except Exception:
                                 pass
                             if chars_per_sec < 3.0:
@@ -797,11 +798,11 @@ class WhisperDictationApp(rumps.App):
                                     len(raw_text), audio_duration, chars_per_sec,
                                 )
                                 raw_text = None
-                            elif _foreign:
+                            elif _lang_reason:
                                 log.warning(
-                                    "Streaming output has foreign-language letters "
-                                    "%r — re-transcribing via batch: %r",
-                                    "".join(sorted(set(_foreign)))[:20], raw_text[:60],
+                                    "Streaming output not RU/EN (%s) — "
+                                    "re-transcribing via batch: %r",
+                                    _lang_reason, raw_text[:60],
                                 )
                                 raw_text = None
                             else:

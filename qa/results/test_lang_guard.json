@@ -80,6 +80,78 @@
       "status": "PASS",
       "ms": 0,
       "error": null
+    },
+    {
+      "id": "TC_LANG_FRENCH_REPORTED",
+      "area": "lang_guard",
+      "desc": "the reported French drift 'J'ai sur le file le jeu de Tiber Park' \u2192 suspicious",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_LANG_FRENCH_ELISION",
+      "area": "lang_guard",
+      "desc": "French elision (c'est, qu'il) flagged even without marker words",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_LANG_SPANISH",
+      "area": "lang_guard",
+      "desc": "Spanish \u2192 suspicious",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_LANG_GERMAN",
+      "area": "lang_guard",
+      "desc": "German \u2192 suspicious",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_LANG_ITALIAN",
+      "area": "lang_guard",
+      "desc": "Italian \u2192 suspicious",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_LANG_ENGLISH_NOT_FLAGGED",
+      "area": "lang_guard",
+      "desc": "genuine English (incl. same sentence as the French drift) is NOT flagged",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_LANG_ENGLISH_CONTRACTIONS",
+      "area": "lang_guard",
+      "desc": "English contractions (don't, it's, we'll) are not mistaken for Romance elision",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_LANG_ENGLISH_FOREIGN_NAME",
+      "area": "lang_guard",
+      "desc": "one stray foreign name word in English stays below threshold",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
+    },
+    {
+      "id": "TC_LANG_RU_EN_MIX_NOT_FLAGGED",
+      "area": "lang_guard",
+      "desc": "Russian with English words is not flagged as foreign Latin",
+      "status": "PASS",
+      "ms": 0,
+      "error": null
     }
   ]
 }
