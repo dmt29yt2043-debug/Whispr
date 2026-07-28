@@ -7,6 +7,7 @@ Double-tap Right Option for hands-free toggle mode.
 
 import os
 import sys
+import time
 import logging
 import threading
 
@@ -216,6 +217,9 @@ class WhisperDictationApp(rumps.App):
         # Flag used to abort in-flight transcription/cleanup on Escape
         self._cancel_flag = threading.Event()
         self._processing = False  # True while _process_audio is running
+        # Serializes dictation pipelines so pastes happen in spoken order
+        # (see _process_audio docstring).
+        self._pipeline_lock = threading.Lock()
         self._recording_bundle_id = None  # captured at recording start
         self._mic_error_shown = False
 
@@ -728,7 +732,21 @@ class WhisperDictationApp(rumps.App):
         """Full pipeline: VAD → transcribe → replace → clean → inject.
 
         Checks self._cancel_flag at each step so Escape can abort cleanly.
+
+        SERIALIZED via _pipeline_lock: each dictation is spawned on its
+        own thread, and without ordering a slow pipeline (long audio +
+        GPT cleanup) finishing AFTER a faster later one pasted its text
+        out of order / into the wrong window — seen by users as "я диктую
+        предложение, а вставляется предыдущее". The lock guarantees
+        dictations paste in the order they were spoken.
         """
+        started_at = time.time()
+        if not hasattr(self, "_pipeline_lock"):
+            self._pipeline_lock = threading.Lock()
+        with self._pipeline_lock:
+            self._process_audio_locked(audio_path, started_at)
+
+    def _process_audio_locked(self, audio_path: str, started_at: float) -> None:
         self._cancel_flag.clear()
         self._processing = True
         temp_files = [audio_path]
@@ -885,6 +903,24 @@ class WhisperDictationApp(rumps.App):
             except Exception as e:
                 log.debug("history record failed: %s", e)
 
+            # Staleness cutoff: if this dictation took abnormally long to
+            # process (slow API, queued behind another dictation, machine
+            # asleep mid-pipeline), the user has moved on — a surprise
+            # auto-paste would land in the wrong context and read as
+            # "вставился старый текст". Copy to clipboard + notify instead.
+            _age = time.time() - started_at
+            if _age > 30.0:
+                log.warning("Pipeline took %.0fs — too stale to auto-paste, "
+                            "copying to clipboard instead", _age)
+                from injector import _write_verified as _wv
+                _wv(final_text)
+                self._notify("Dictation ready (was slow)",
+                             "Press Cmd+V to paste: " + final_text[:60])
+                self.overlay.show_done("📋 " + final_text)
+                self._reset_ui()
+                log.info("Done (stale-copied): '%s'", final_text[:80])
+                return
+
             # Step 6: Inject with focus check + clipboard restore
             result = inject_text(
                 final_text,
@@ -894,6 +930,14 @@ class WhisperDictationApp(rumps.App):
 
             if result == "copied":
                 self.overlay.show_done("📋 " + final_text)
+            elif result == "failed":
+                # Clipboard write couldn't be verified — nothing was
+                # pasted (fail-closed). Tell the user instead of silently
+                # pretending success; the text is in history + Cmd+Shift+V.
+                self.overlay.show_error("Paste failed — use 🕘 menu")
+                self._notify("Paste failed",
+                             "Couldn't verify clipboard. Text saved to history — "
+                             "click the menu bar icon → Recent Dictations.")
             else:
                 self.overlay.show_done(final_text)
 

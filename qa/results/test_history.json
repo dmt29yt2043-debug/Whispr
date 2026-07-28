@@ -6,7 +6,7 @@
       "area": "history",
       "desc": "added dictations come back newest-first with timestamps",
       "status": "PASS",
-      "ms": 3,
+      "ms": 2,
       "error": null
     },
     {
@@ -22,7 +22,7 @@
       "area": "history",
       "desc": "history is capped \u2014 oldest entries pruned",
       "status": "PASS",
-      "ms": 12,
+      "ms": 10,
       "error": null
     },
     {

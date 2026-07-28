@@ -2,26 +2,106 @@
 
 Features:
 - AX focus check: if focused element isn't a text field, just copy to clipboard
-- Clipboard restore: saves previous clipboard content, restores it after paste
+- Clipboard restore (opt-in): saves previous clipboard, restores after paste
+- FAIL-CLOSED pasting: Cmd+V is only pressed after the pasteboard is
+  VERIFIED to hold our text (native NSPasteboard + changeCount); if the
+  write can't be confirmed we never paste stale content
+- Global inject lock: concurrent pipelines can't interleave copy/paste
+- Post-paste clobber repair: if something rewrites the pasteboard within
+  the async gap before the target app reads it, we re-assert our text
 """
 
 import time
 import logging
 import threading
-from typing import Optional
+from typing import Optional, Tuple
 
 import pyperclip
 from Quartz import (
     CGEventCreateKeyboardEvent,
     CGEventSetFlags,
+    CGEventSetIntegerValueField,
     CGEventPost,
     kCGHIDEventTap,
     kCGEventFlagMaskCommand,
+    kCGEventSourceUserData,
 )
 
 log = logging.getLogger(__name__)
 
 V_KEY_CODE = 9  # 'V' on macOS
+
+# Marker stamped into our synthetic Cmd+V events (eventSourceUserData).
+# Our own CGEventTaps (repaste_hotkey) short-circuit marked events so the
+# injected keystroke doesn't wait on a Python callback under load.
+SYNTHETIC_EVENT_MARK = 0x57484953  # 'WHIS'
+
+# Serializes the copy→verify→paste critical section across ALL callers
+# (concurrent dictation pipelines, re-paste hotkey, history menu). Without
+# it, a slow pipeline A and a fast pipeline B interleave: A copies A,
+# B copies B, A pastes → A's target receives B. Observed live as "я диктую
+# предложение, а вставляется предыдущее/чужое".
+_INJECT_LOCK = threading.Lock()
+
+# ── Native pasteboard (atomic, in-process, verifiable) ────────────────
+#
+# pyperclip shells out to pbcopy/pbpaste per call — slow (subprocess spawn)
+# and unverifiable. NSPasteboard gives us changeCount: we know EXACTLY
+# whether our write took and whether anyone clobbered it afterwards.
+
+def _pb() :
+    from AppKit import NSPasteboard
+    return NSPasteboard.generalPasteboard()
+
+
+def _pb_read() -> str:
+    try:
+        s = _pb().stringForType_("public.utf8-plain-text")
+        return str(s) if s is not None else ""
+    except Exception:
+        try:
+            return pyperclip.paste()
+        except Exception:
+            return ""
+
+
+def _pb_write(text: str) -> Optional[int]:
+    """Write text to the general pasteboard. Returns the new changeCount
+    on verified success, None on failure. Never raises."""
+    try:
+        pb = _pb()
+        pb.clearContents()
+        ok = pb.setString_forType_(text, "public.utf8-plain-text")
+        if not ok:
+            return None
+        count = pb.changeCount()
+        # Read-back verification — belt and suspenders.
+        if _pb_read() != text:
+            return None
+        return int(count)
+    except Exception as e:
+        log.debug("NSPasteboard write failed (%s) — pyperclip fallback", e)
+        try:
+            pyperclip.copy(text)
+            deadline = time.time() + 0.5
+            while time.time() < deadline:
+                if _pb_read() == text:
+                    return -1  # verified, changeCount unknown
+                time.sleep(0.02)
+        except Exception:
+            pass
+        return None
+
+
+def _write_verified(text: str, attempts: int = 3) -> Optional[int]:
+    """Write + verify with retries. None ⇒ could NOT confirm the clipboard
+    holds our text — callers must NOT paste in that case."""
+    for i in range(attempts):
+        count = _pb_write(text)
+        if count is not None:
+            return count
+        time.sleep(0.05 * (i + 1))
+    return None
 
 # How long to wait before putting the user's previous clipboard back.
 #
@@ -50,81 +130,125 @@ def set_last_transcription(text: str) -> None:
 
 
 def _press_cmd_v() -> None:
-    """Simulate Cmd+V via Quartz CGEvents."""
+    """Simulate Cmd+V via Quartz CGEvents (marked as ours)."""
     down = CGEventCreateKeyboardEvent(None, V_KEY_CODE, True)
     CGEventSetFlags(down, kCGEventFlagMaskCommand)
+    CGEventSetIntegerValueField(down, kCGEventSourceUserData, SYNTHETIC_EVENT_MARK)
     CGEventPost(kCGHIDEventTap, down)
 
     up = CGEventCreateKeyboardEvent(None, V_KEY_CODE, False)
     CGEventSetFlags(up, kCGEventFlagMaskCommand)
+    CGEventSetIntegerValueField(up, kCGEventSourceUserData, SYNTHETIC_EVENT_MARK)
     CGEventPost(kCGHIDEventTap, up)
 
 
+# Bumped at every paste; background clobber-guards stop the moment a newer
+# paste starts, so an old guard can never fight a new dictation for the
+# pasteboard.
+_paste_generation = 0
+
+
+def _copy_verify_paste(text: str) -> bool:
+    """The fail-closed core: verified copy → Cmd+V → clobber guard.
+
+    Runs under _INJECT_LOCK. Returns True iff Cmd+V was actually sent
+    with OUR text confirmed on the pasteboard. On any verification
+    failure the paste is NOT sent — pasting stale/foreign clipboard
+    content is strictly worse than pasting nothing (the text stays
+    available in the clipboard-retry, history and Cmd+Shift+V).
+    """
+    global _paste_generation
+    _paste_generation += 1
+    my_gen = _paste_generation
+
+    count = _write_verified(text)
+    if count is None:
+        log.error("Clipboard write could NOT be verified — NOT pasting "
+                  "(%d chars kept in history)", len(text))
+        return False
+
+    # Final instant re-check right before the keystroke: nobody clobbered
+    # the pasteboard between write and now.
+    if _pb_read() != text:
+        count = _write_verified(text)
+        if count is None:
+            log.error("Pasteboard clobbered and re-write failed — NOT pasting")
+            return False
+
+    _press_cmd_v()
+
+    # Short synchronous guard: most apps read the pasteboard well within
+    # 250ms of the keystroke. Held under the lock so a concurrent inject
+    # can't slip its copy into this window.
+    deadline = time.time() + 0.25
+    while time.time() < deadline:
+        time.sleep(0.05)
+        try:
+            if _pb_read() != text:
+                log.warning("Pasteboard clobbered right after paste — re-asserting")
+                _write_verified(text, attempts=2)
+        except Exception:
+            break
+
+    # Extended watch runs in the background — LOG-ONLY. Past the 250ms
+    # sync window a clipboard change may be the USER's own Cmd+C or our
+    # restore thread, which we must never overwrite; the dangerous
+    # cross-pipeline race is already eliminated by _INJECT_LOCK. Logging
+    # keeps visibility into third-party clobberers (clipboard managers).
+    def _watch():
+        g_deadline = time.time() + 1.25
+        while time.time() < g_deadline:
+            time.sleep(0.15)
+            if _paste_generation != my_gen:
+                return  # a newer paste owns the pasteboard now
+            try:
+                if _pb_read() != text:
+                    log.info("Pasteboard changed within 1.5s of paste "
+                             "(user copy / restore / clipboard manager)")
+                    return
+            except Exception:
+                return
+    threading.Thread(target=_watch, daemon=True).start()
+    return True
+
+
 def repaste_last(restore_clipboard: bool = True) -> bool:
-    """Paste the last transcription without permanently touching the clipboard.
+    """Paste the last transcription again (Cmd+Shift+V / history menu).
 
-    Behaviour:
-      1. Snapshot the current clipboard.
-      2. Put the last transcription on the clipboard, send Cmd+V.
-      3. After ~600ms, restore the snapshot — UNLESS the user has copied
-         something new in the meantime (we detect by comparing clipboard
-         content to what we just put there).
+    Same fail-closed core as inject_text. With restore_clipboard the
+    previous clipboard returns after _RESTORE_DELAY_SEC unless the user
+    copied something newer meanwhile.
 
-    The 600ms gap exists because some apps read the clipboard asynchronously
-    after receiving Cmd+V; restoring too fast can cause them to paste the
-    OLD content instead of our text.
-
-    Returns True if there was a transcription to paste.
+    Returns True if a paste was actually sent.
     """
     if not _last_transcription:
         log.info("Re-paste requested but no previous transcription")
         return False
     text = _last_transcription
 
-    # Snapshot user's existing clipboard so we can put it back.
     prev_clipboard: Optional[str] = None
     if restore_clipboard:
-        try:
-            prev_clipboard = pyperclip.paste()
-        except Exception:
-            prev_clipboard = None
+        prev_clipboard = _pb_read() or None
 
-    try:
-        # Wait up to 350ms for the clipboard manager to actually accept
-        # our copy (Alfred/Raycast/Paste.app sometimes hold it briefly).
-        # Without this, Cmd+V can paste stale content.
-        pyperclip.copy(text)
-        deadline = time.time() + 0.30
-        while time.time() < deadline:
-            try:
-                if pyperclip.paste() == text:
-                    break
-            except Exception:
-                break
-            time.sleep(0.02)
-
-        _press_cmd_v()
-        log.info("Re-pasted last transcription (%d chars)", len(text))
-
-        # Restore the user's clipboard in the background — only if it
-        # still contains our text (i.e. the user hasn't copied something
-        # new during the wait, in which case we must not clobber their copy).
-        if restore_clipboard and prev_clipboard is not None:
-            def _restore():
-                time.sleep(_RESTORE_DELAY_SEC)
-                try:
-                    if pyperclip.paste() == text:
-                        pyperclip.copy(prev_clipboard)
-                        log.info("Clipboard restored after re-paste (%.1fs)", _RESTORE_DELAY_SEC)
-                    else:
-                        log.info("Clipboard changed by user — skipping restore")
-                except Exception:
-                    pass
-            threading.Thread(target=_restore, daemon=True).start()
-        return True
-    except Exception as e:
-        log.error("Re-paste failed: %s", e)
+    with _INJECT_LOCK:
+        ok = _copy_verify_paste(text)
+    if not ok:
         return False
+    log.info("Re-pasted last transcription (%d chars)", len(text))
+
+    if restore_clipboard and prev_clipboard is not None:
+        def _restore():
+            time.sleep(_RESTORE_DELAY_SEC)
+            try:
+                if _pb_read() == text:
+                    _write_verified(prev_clipboard, attempts=1)
+                    log.info("Clipboard restored after re-paste (%.1fs)", _RESTORE_DELAY_SEC)
+                else:
+                    log.info("Clipboard changed by user — skipping restore")
+            except Exception:
+                pass
+        threading.Thread(target=_restore, daemon=True).start()
+    return True
 
 
 def inject_text(
@@ -134,18 +258,18 @@ def inject_text(
 ) -> str:
     """Paste text into the focused app, or copy to clipboard if no text focus.
 
-    Returns "pasted" | "copied" | "skipped".
+    Returns "pasted" | "copied" | "skipped" | "failed".
+    "failed" ⇒ the clipboard write could not be verified, so NO Cmd+V was
+    sent (never paste unverified/stale content). Callers should surface
+    that instead of pretending success.
     """
     if not text:
         return "skipped"
 
-    # Save previous clipboard
+    # Save previous clipboard (opt-in restore mode only)
     prev_clipboard: Optional[str] = None
     if restore_clipboard:
-        try:
-            prev_clipboard = pyperclip.paste()
-        except Exception:
-            prev_clipboard = None
+        prev_clipboard = _pb_read() or None
 
     # Check focus
     can_paste = True
@@ -157,39 +281,21 @@ def inject_text(
         except Exception as e:
             log.debug("focus check error: %s (allowing paste)", e)
 
-    # Copy text to clipboard and verify the copy actually succeeded before
-    # firing Cmd+V. Clipboard managers (Alfred, Raycast, Paste.app) can
-    # intercept pyperclip.copy() and 50ms isn't always enough. If the
-    # clipboard doesn't contain our text, wait up to 300ms more.
-    pyperclip.copy(text)
-    deadline = time.time() + 0.30
-    while time.time() < deadline:
-        try:
-            if pyperclip.paste() == text:
-                break
-        except Exception:
-            break
-        time.sleep(0.02)
-    else:
-        log.warning("Clipboard didn't receive our text within 350ms — paste may paste stale content")
-
     if can_paste:
-        _press_cmd_v()
+        with _INJECT_LOCK:
+            ok = _copy_verify_paste(text)
+        if not ok:
+            return "failed"
         log.info("Injected %d chars into focused app", len(text))
         result = "pasted"
 
-        # Restore previous clipboard — but ONLY if the clipboard still
-        # contains the text we just injected. If the user copied something
-        # new during the wait, we must not clobber their copy. The delay
-        # must outlast the target app's async handling of Cmd+V — see
-        # _RESTORE_DELAY_SEC.
         if restore_clipboard and prev_clipboard is not None:
             injected = text  # capture for closure
             def _restore():
                 time.sleep(_RESTORE_DELAY_SEC)
                 try:
-                    if pyperclip.paste() == injected:
-                        pyperclip.copy(prev_clipboard)
+                    if _pb_read() == injected:
+                        _write_verified(prev_clipboard, attempts=1)
                         log.info("Clipboard restored (%.1fs after paste)", _RESTORE_DELAY_SEC)
                     else:
                         log.info("Clipboard was changed by user — skipping restore")
@@ -197,6 +303,9 @@ def inject_text(
                     pass
             threading.Thread(target=_restore, daemon=True).start()
     else:
+        with _INJECT_LOCK:
+            if _write_verified(text) is None:
+                return "failed"
         log.info("No text focus, copied %d chars to clipboard", len(text))
         result = "copied"
 

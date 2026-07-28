@@ -184,5 +184,79 @@ def test_repaste_does_not_clobber_user_copy():
     )
 
 
+# ── Fail-closed + race-safety (regression for "вставляется предыдущее") ──
+
+@case("TC_INJ_FAILED_NO_PASTE", "injector",
+      "unverifiable clipboard write → result 'failed', Cmd+V NEVER sent")
+def test_failed_no_paste():
+    with patch("focus_check.get_focused_text_info", return_value=(True, "com.apple.Notes")):
+        with patch.object(injector, "_press_cmd_v") as mock_paste:
+            with patch.object(injector, "_write_verified", return_value=None):
+                r = injector.inject_text("text", check_focus=True, restore_clipboard=False)
+    assert r == "failed", f"got {r!r}"
+    mock_paste.assert_not_called()
+
+
+@case("TC_INJ_CLOBBER_REASSERT", "injector",
+      "pasteboard clobbered right at paste time → guard re-asserts our text")
+def test_clobber_reassert():
+    """Simulates a concurrent writer sneaking in exactly when Cmd+V fires
+    (the async gap the user's bug lived in). The post-paste guard must
+    put our text back within the sync window."""
+    def _clobber():
+        injector._pb_write("INTRUDER-TEXT")
+    with patch("focus_check.get_focused_text_info", return_value=(True, "com.apple.Notes")):
+        with patch.object(injector, "_press_cmd_v", side_effect=_clobber):
+            r = injector.inject_text("моя диктовка", check_focus=True,
+                                     restore_clipboard=False)
+    assert r == "pasted"
+    # After the synchronous guard, the clipboard must hold OUR text again.
+    assert injector._pb_read() == "моя диктовка", (
+        f"clipboard is {injector._pb_read()!r} — guard failed to re-assert"
+    )
+
+
+@case("TC_INJ_CONCURRENT_ORDERING", "injector",
+      "two concurrent injects: each paste fires with ITS OWN text on the clipboard")
+def test_concurrent_ordering():
+    """The reported bug: pipeline A (slow) and B (fast) interleaved so a
+    paste fired with the OTHER dictation's text on the clipboard. With
+    the inject lock, at the instant Cmd+V fires the clipboard must equal
+    the text that call was asked to paste."""
+    import threading as _th
+
+    seen = []  # (requested_text, clipboard_at_paste)
+    orig_press = injector._press_cmd_v
+
+    def _recording_press():
+        seen.append(injector._pb_read())
+
+    results = {}
+    def _run(name, text):
+        with patch("focus_check.get_focused_text_info", return_value=(True, "x")):
+            results[name] = injector.inject_text(text, check_focus=True,
+                                                 restore_clipboard=False)
+
+    with patch.object(injector, "_press_cmd_v", side_effect=_recording_press):
+        t1 = _th.Thread(target=_run, args=("A", "текст диктовки А"))
+        t2 = _th.Thread(target=_run, args=("B", "текст диктовки Б"))
+        t1.start(); t2.start()
+        t1.join(timeout=10); t2.join(timeout=10)
+
+    assert results.get("A") == "pasted" and results.get("B") == "pasted", results
+    assert sorted(seen) == sorted(["текст диктовки А", "текст диктовки Б"]), (
+        f"each paste must fire with its own text on the clipboard, got {seen}"
+    )
+
+
+@case("TC_INJ_NATIVE_ROUNDTRIP", "injector",
+      "native NSPasteboard write/read roundtrip incl. unicode")
+def test_native_roundtrip():
+    txt = "Привет, мир! Ёё — emoji 👍 and English"
+    cnt = injector._write_verified(txt)
+    assert cnt is not None
+    assert injector._pb_read() == txt
+
+
 if __name__ == "__main__":
     run_all("test_injector")

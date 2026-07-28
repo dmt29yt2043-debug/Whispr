@@ -96,6 +96,17 @@ class RePasteHotkey:
                     pass
                 return event
 
+            # Our own synthetic Cmd+V (from injector) — pass through
+            # immediately, don't spend Python time on it.
+            try:
+                from Quartz import kCGEventSourceUserData
+                from injector import SYNTHETIC_EVENT_MARK
+                if CGEventGetIntegerValueField(
+                        event, kCGEventSourceUserData) == SYNTHETIC_EVENT_MARK:
+                    return event
+            except Exception:
+                pass
+
             keycode = CGEventGetIntegerValueField(event, _kCGKeyboardEventKeycode)
 
             # Escape — cancel any ongoing recording/processing.
