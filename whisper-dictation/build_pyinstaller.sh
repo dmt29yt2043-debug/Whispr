@@ -30,8 +30,21 @@ echo "== Install to /Applications =="
 [ -d "$APP" ] && rm -rf "$APP"
 cp -R "$BUILT" "$APP"
 
-echo "== Ad-hoc deep sign =="
-codesign --force --deep --sign - "$APP"
+echo "== Deep sign =="
+# Prefer a STABLE self-signed identity ("Whispr Local Signing") so the
+# app's designated requirement is keyed on the certificate, not the
+# cdhash. That makes TCC (Accessibility/Microphone) grants SURVIVE
+# rebuilds — otherwise every rebuild changes the cdhash and macOS wipes
+# the grants, forcing a re-authorize. Falls back to ad-hoc if the cert
+# isn't installed on this machine.
+SIGN_ID=$(security find-certificate -c "Whispr Local Signing" -Z 2>/dev/null | awk '/SHA-1/{print $3}')
+if [ -n "$SIGN_ID" ]; then
+    echo "   using stable cert $SIGN_ID"
+    codesign --force --deep --sign "$SIGN_ID" "$APP"
+else
+    echo "   stable cert not found — ad-hoc signing (TCC will reset on rebuild)"
+    codesign --force --deep --sign - "$APP"
+fi
 
 echo "== Register with LaunchServices =="
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP"
