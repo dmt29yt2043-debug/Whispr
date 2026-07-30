@@ -6,7 +6,7 @@
       "area": "injector",
       "desc": "empty text returns 'skipped', doesn't touch clipboard",
       "status": "PASS",
-      "ms": 59,
+      "ms": 58,
       "error": null
     },
     {
@@ -14,7 +14,7 @@
       "area": "injector",
       "desc": "whitespace-only text returns 'skipped'",
       "status": "PASS",
-      "ms": 385,
+      "ms": 397,
       "error": null
     },
     {
@@ -30,7 +30,7 @@
       "area": "injector",
       "desc": "text focus \u2192 returns 'pasted', fires Cmd+V",
       "status": "PASS",
-      "ms": 320,
+      "ms": 326,
       "error": null
     },
     {
@@ -46,7 +46,7 @@
       "area": "injector",
       "desc": "clipboard restore: skipped when user changes clipboard during wait",
       "status": "PASS",
-      "ms": 936,
+      "ms": 939,
       "error": null
     },
     {
@@ -54,7 +54,7 @@
       "area": "injector",
       "desc": "clipboard restore: restores when clipboard still ours",
       "status": "PASS",
-      "ms": 930,
+      "ms": 926,
       "error": null
     },
     {
@@ -70,7 +70,7 @@
       "area": "injector",
       "desc": "10 KB text handled without truncation",
       "status": "PASS",
-      "ms": 269,
+      "ms": 279,
       "error": null
     },
     {
@@ -78,7 +78,7 @@
       "area": "injector",
       "desc": "set_last_transcription + repaste_last round-trip",
       "status": "PASS",
-      "ms": 278,
+      "ms": 271,
       "error": null
     },
     {
@@ -102,7 +102,7 @@
       "area": "injector",
       "desc": "if user copies something new during re-paste, we do NOT clobber it on restore",
       "status": "PASS",
-      "ms": 881,
+      "ms": 879,
       "error": null
     },
     {
@@ -110,7 +110,7 @@
       "area": "injector",
       "desc": "unverifiable clipboard write \u2192 result 'failed', Cmd+V NEVER sent",
       "status": "PASS",
-      "ms": 1,
+      "ms": 0,
       "error": null
     },
     {
@@ -118,7 +118,7 @@
       "area": "injector",
       "desc": "pasteboard clobbered right at paste time \u2192 guard re-asserts our text",
       "status": "PASS",
-      "ms": 267,
+      "ms": 269,
       "error": null
     },
     {
@@ -126,7 +126,7 @@
       "area": "injector",
       "desc": "two concurrent injects: each paste fires with ITS OWN text on the clipboard",
       "status": "PASS",
-      "ms": 546,
+      "ms": 539,
       "error": null
     },
     {

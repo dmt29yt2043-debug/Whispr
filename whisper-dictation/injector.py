@@ -240,11 +240,14 @@ def repaste_last(restore_clipboard: bool = True) -> bool:
         def _restore():
             time.sleep(_RESTORE_DELAY_SEC)
             try:
-                if _pb_read() == text:
-                    _write_verified(prev_clipboard, attempts=1)
-                    log.info("Clipboard restored after re-paste (%.1fs)", _RESTORE_DELAY_SEC)
-                else:
-                    log.info("Clipboard changed by user — skipping restore")
+                # Under the inject lock so we can't interleave with a new
+                # dictation's copy→verify→paste critical section.
+                with _INJECT_LOCK:
+                    if _pb_read() == text:
+                        _write_verified(prev_clipboard, attempts=1)
+                        log.info("Clipboard restored after re-paste (%.1fs)", _RESTORE_DELAY_SEC)
+                    else:
+                        log.info("Clipboard changed by user — skipping restore")
             except Exception:
                 pass
         threading.Thread(target=_restore, daemon=True).start()
@@ -294,11 +297,14 @@ def inject_text(
             def _restore():
                 time.sleep(_RESTORE_DELAY_SEC)
                 try:
-                    if _pb_read() == injected:
-                        _write_verified(prev_clipboard, attempts=1)
-                        log.info("Clipboard restored (%.1fs after paste)", _RESTORE_DELAY_SEC)
-                    else:
-                        log.info("Clipboard was changed by user — skipping restore")
+                    # Under the inject lock: can't interleave with a new
+                    # dictation's copy→verify→paste critical section.
+                    with _INJECT_LOCK:
+                        if _pb_read() == injected:
+                            _write_verified(prev_clipboard, attempts=1)
+                            log.info("Clipboard restored (%.1fs after paste)", _RESTORE_DELAY_SEC)
+                        else:
+                            log.info("Clipboard was changed by user — skipping restore")
                 except Exception:
                     pass
             threading.Thread(target=_restore, daemon=True).start()

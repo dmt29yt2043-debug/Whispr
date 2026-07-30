@@ -469,7 +469,7 @@ class WhisperDictationApp(rumps.App):
     def _on_repaste(self) -> None:
         """Triggered by Cmd+Shift+V — re-paste the last transcription."""
         ok = _injector.repaste_last(
-            restore_clipboard=S.get("restore_clipboard", False))
+            restore_clipboard=S.get("restore_clipboard", True))
         if ok:
             self.overlay.show_done("↻ " + _injector.get_last_transcription())
         else:
@@ -925,7 +925,7 @@ class WhisperDictationApp(rumps.App):
             result = inject_text(
                 final_text,
                 check_focus=S.get("check_focus", True),
-                restore_clipboard=S.get("restore_clipboard", False),
+                restore_clipboard=S.get("restore_clipboard", True),
             )
 
             if result == "copied":
@@ -1031,7 +1031,7 @@ class WhisperDictationApp(rumps.App):
         force_mic = S.get("force_builtin_mic", True)
         vad_on = S.get("vad_enabled", True)
         check_focus = S.get("check_focus", True)
-        restore_clip = S.get("restore_clipboard", False)
+        restore_clip = S.get("restore_clipboard", True)
         always_en = S.get("always_english", False)
         hotkey = S.get("hotkey", "right_option")
 
